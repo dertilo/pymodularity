@@ -1,0 +1,34 @@
+[project]
+name = "underscope"
+version = "0.1.0"
+description = "See and check a repo's real Python imports: a privacy convention on PEP 8 underscores, an import-cycle ban, and a coupling report, all derived from the code."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+authors = [{ name = "Tilo Himmelsbach" }]
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/dertilo/underscope"
+Repository = "https://github.com/dertilo/underscope"
+Issues = "https://github.com/dertilo/underscope/issues"
+
+[project.scripts]
+underscope = "underscope.cli:main"
+
+[dependency-groups]
+dev = ["pytest", "ruff", "basedpyright"]
+
+[build-system]
+requires = ["uv_build>=0.10.7,<0.11.0"]
+build-backend = "uv_build"
+
+[tool.ruff]
+line-length = 90
+target-version = "py311"
+
+[tool.basedpyright]
+include = ["src", "tests"]
+pythonVersion = "3.11"
+reportUnusedCallResult = false
+reportAny = false
