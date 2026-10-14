@@ -118,7 +118,7 @@ def _run_graph(repo: Path, out_dir: Path, write_html: bool) -> int:
     view per directory under DIR."""
     out_dir.mkdir(parents=True, exist_ok=True)
     graph = build_graph(repo)
-    file_scores, dir_scores = compute_scores(graph.dirs_with_py, graph.adj, graph.radj)
+    scores = compute_scores(graph.dirs_with_py, graph.adj, graph.radj)
 
     written = 0
     for directory in sorted(graph.dirs_with_py, key=str):
@@ -131,8 +131,8 @@ def _run_graph(repo: Path, out_dir: Path, write_html: bool) -> int:
             pair_edges,
             graph.edge_names,
             write_html,
-            file_scores,
-            dir_scores,
+            scores.file_scores,
+            scores.dir_scores,
         )
         written += 1
 
@@ -144,15 +144,15 @@ def _run_metrics(repo: Path) -> int:
     """`underscope metrics <repo>`: prints a coupling report to stdout,
     always exits 0."""
     graph = build_graph(repo)
-    file_scores, dir_scores = compute_scores(graph.dirs_with_py, graph.adj, graph.radj)
+    scores = compute_scores(graph.dirs_with_py, graph.adj, graph.radj)
 
     print(
         "\n".join(
             render_metrics(
                 graph.dirs_with_py,
                 graph.edge_names,
-                file_scores,
-                dir_scores,
+                scores.file_scores,
+                scores.dir_scores,
                 graph.defined_names,
                 graph.adj,
                 graph.radj,
@@ -223,4 +223,5 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    # nosemgrep: no-raise-outside-boundary  # boundary: CLI entry point, the process exit boundary
     raise SystemExit(main())

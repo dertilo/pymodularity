@@ -59,10 +59,10 @@ def build_view(directory: Path, edge_names: EdgeNames) -> PairEdges:
     return pair_edges
 
 
-def compute_inside_nodes(directory: Path, pair_edges: PairEdges) -> set[Path]:
+def compute_inside_nodes(directory: Path, pair_edges: PairEdges) -> frozenset[Path]:
     nodes: set[Path] = set()
     for src, tgt in pair_edges:
         nodes.add(src)
         nodes.add(tgt)
     outside = {n for n in nodes if not n.is_relative_to(directory)}
-    return nodes - outside
+    return frozenset(nodes - outside)

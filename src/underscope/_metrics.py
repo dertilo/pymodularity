@@ -1,13 +1,15 @@
 """Reach, file/directory scores, and the 5 coupling reports `underscope
 metrics` prints."""
 
+from collections.abc import Mapping
+from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 from pathlib import Path
 
 from underscope._resolve import EdgeNames
 
 
-def _reachable_set(start: Path, adj: dict[Path, set[Path]]) -> set[Path]:
+def _reachable_set(start: Path, adj: Mapping[Path, AbstractSet[Path]]) -> frozenset[Path]:
     """Every other node `start` can reach, following `adj` (BFS/DFS, order
     doesn't matter); `start` itself never counts even inside a cycle back
     to itself."""
@@ -19,22 +21,40 @@ def _reachable_set(start: Path, adj: dict[Path, set[Path]]) -> set[Path]:
             if nxt != start and nxt not in seen:
                 seen.add(nxt)
                 stack.append(nxt)
-    return seen
+    return frozenset(seen)
 
 
-def _compute_reach(
-    nodes: set[Path], adj: dict[Path, set[Path]], radj: dict[Path, set[Path]]
-) -> tuple[dict[Path, set[Path]], dict[Path, set[Path]]]:
+@dataclass(frozen=True, slots=True)
+class _Reach:
     """Per file: the set of dependents (other files with an import path to
     it) and the set of dependencies (other files it has an import path
     to), both transitive."""
+
+    dependents: Mapping[Path, frozenset[Path]]
+    dependencies: Mapping[Path, frozenset[Path]]
+
+
+def _compute_reach(
+    nodes: AbstractSet[Path],
+    adj: Mapping[Path, AbstractSet[Path]],
+    radj: Mapping[Path, AbstractSet[Path]],
+) -> _Reach:
     dependents = {n: _reachable_set(n, radj) for n in nodes}
     dependencies = {n: _reachable_set(n, adj) for n in nodes}
-    return dependents, dependencies
+    return _Reach(dependents, dependencies)
 
 
-def _top_n_by_count(counts: dict[Path, int], n: int = 10) -> list[tuple[Path, int]]:
-    return sorted(counts.items(), key=lambda kv: (-kv[1], str(kv[0])))[:n]
+@dataclass(frozen=True, slots=True)
+class _CountedPath:
+    """A path with a count against it (dependents or dependencies)."""
+
+    path: Path
+    count: int
+
+
+def _top_n_by_count(counts: Mapping[Path, int], n: int = 10) -> tuple[_CountedPath, ...]:
+    ranked = sorted(counts.items(), key=lambda kv: (-kv[1], str(kv[0])))[:n]
+    return tuple(_CountedPath(p, c) for p, c in ranked)
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,10 +81,10 @@ class DirScore:
 
 
 def _compute_file_scores(
-    nodes: set[Path],
-    dependents: dict[Path, set[Path]],
-    dependencies: dict[Path, set[Path]],
-) -> dict[Path, FileScore]:
+    nodes: AbstractSet[Path],
+    dependents: Mapping[Path, AbstractSet[Path]],
+    dependencies: Mapping[Path, AbstractSet[Path]],
+) -> Mapping[Path, FileScore]:
     scores: dict[Path, FileScore] = {}
     for n in nodes:
         d_in = len(dependents[n])
@@ -73,34 +93,43 @@ def _compute_file_scores(
     return scores
 
 
+@dataclass(frozen=True, slots=True)
+class Scores:
+    """`graph` and `metrics`'s shared first step's result: file and
+    directory scores, computed from reach."""
+
+    file_scores: Mapping[Path, FileScore]
+    dir_scores: Mapping[Path, DirScore]
+
+
 def compute_scores(
-    dirs_with_py: set[Path],
-    adj: dict[Path, set[Path]],
-    radj: dict[Path, set[Path]],
-) -> tuple[dict[Path, FileScore], dict[Path, DirScore]]:
+    dirs_with_py: AbstractSet[Path],
+    adj: Mapping[Path, AbstractSet[Path]],
+    radj: Mapping[Path, AbstractSet[Path]],
+) -> Scores:
     """`graph` and `metrics`'s shared first step: reach, then file and
     directory scores from it."""
     nodes = set(adj)
-    dependents, dependencies = _compute_reach(nodes, adj, radj)
-    file_scores = _compute_file_scores(nodes, dependents, dependencies)
-    dir_scores = _compute_dir_scores(dirs_with_py, dependents, dependencies)
-    return file_scores, dir_scores
+    reach = _compute_reach(nodes, adj, radj)
+    file_scores = _compute_file_scores(nodes, reach.dependents, reach.dependencies)
+    dir_scores = _compute_dir_scores(dirs_with_py, reach.dependents, reach.dependencies)
+    return Scores(file_scores, dir_scores)
 
 
-def _ancestor_dirs(rel: Path) -> list[Path]:
+def _ancestor_dirs(rel: Path) -> tuple[Path, ...]:
     """The directory holding `rel` and every ancestor directory up to the
     repo root ('.'), inclusive."""
     out = [rel.parent]
     while out[-1] != Path("."):
         out.append(out[-1].parent)
-    return out
+    return tuple(out)
 
 
 def _compute_dir_scores(
-    dirs_with_py: set[Path],
-    dependents: dict[Path, set[Path]],
-    dependencies: dict[Path, set[Path]],
-) -> dict[Path, DirScore]:
+    dirs_with_py: AbstractSet[Path],
+    dependents: Mapping[Path, AbstractSet[Path]],
+    dependencies: Mapping[Path, AbstractSet[Path]],
+) -> Mapping[Path, DirScore]:
     dir_in: dict[Path, set[Path]] = {}
     dir_out: dict[Path, set[Path]] = {}
     for f, dep_set in dependents.items():
@@ -130,7 +159,9 @@ class _FileWidth:
     importers: int
 
 
-def _compute_file_widths(nodes: set[Path], edge_names: EdgeNames) -> list[_FileWidth]:
+def _compute_file_widths(
+    nodes: AbstractSet[Path], edge_names: EdgeNames
+) -> tuple[_FileWidth, ...]:
     names_by_target: dict[Path, set[str]] = {}
     bare_targets: set[Path] = set()
     importers_by_target: dict[Path, set[Path]] = {}
@@ -150,10 +181,12 @@ def _compute_file_widths(nodes: set[Path], edge_names: EdgeNames) -> list[_FileW
         )
         importer_count = len(importers_by_target.get(target, set()))
         widths.append(_FileWidth(target, name_count, importer_count))
-    return widths
+    return tuple(widths)
 
 
-def _compute_wrapper_dirs(nodes: set[Path], dirs_with_py: set[Path]) -> set[Path]:
+def _compute_wrapper_dirs(
+    nodes: AbstractSet[Path], dirs_with_py: AbstractSet[Path]
+) -> frozenset[Path]:
     """Directories that hold no .py file of their own and have exactly one
     child directory with Python code, so their file set is identical to
     that child's (and, up a wrapper chain, to the file set of every other
@@ -170,11 +203,11 @@ def _compute_wrapper_dirs(nodes: set[Path], dirs_with_py: set[Path]) -> set[Path
             continue
         children.setdefault(d.parent, []).append(d)
 
-    return {
+    return frozenset(
         d
         for d in dirs_with_py
         if direct_file_count.get(d, 0) == 0 and len(children.get(d, [])) == 1
-    }
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -189,8 +222,8 @@ class _DirWidth:
 
 
 def _compute_dir_widths(
-    dirs_with_py: set[Path], edge_names: EdgeNames
-) -> list[_DirWidth]:
+    dirs_with_py: AbstractSet[Path], edge_names: EdgeNames
+) -> tuple[_DirWidth, ...]:
     named_pairs: dict[Path, set[tuple[Path, str]]] = {}
     bare_targets: dict[Path, set[Path]] = {}
     importers: dict[Path, set[Path]] = {}
@@ -215,7 +248,7 @@ def _compute_dir_widths(
         )
         importer_count = len(importers.get(directory, set()))
         widths.append(_DirWidth(directory, name_count, importer_count))
-    return widths
+    return tuple(widths)
 
 
 @dataclass(frozen=True, slots=True)
@@ -232,8 +265,10 @@ class _Exposure:
 
 
 def _compute_exposure(
-    nodes: set[Path], edge_names: EdgeNames, defined_names: dict[Path, set[str]]
-) -> dict[Path, _Exposure]:
+    nodes: AbstractSet[Path],
+    edge_names: EdgeNames,
+    defined_names: Mapping[Path, AbstractSet[str]],
+) -> Mapping[Path, _Exposure]:
     imported_names: dict[Path, set[str]] = {}
     importers_by_name: dict[Path, dict[str, set[Path]]] = {}
     for (importer_rel, target_rel), names in edge_names.items():
@@ -248,7 +283,7 @@ def _compute_exposure(
     for f in nodes:
         if f.name == "__init__.py":
             continue
-        defined = defined_names.get(f, set())
+        defined = defined_names.get(f, frozenset())
         used_names = defined & imported_names.get(f, set())
         per_name = importers_by_name.get(f, {})
         importer_set: set[Path] = set()
@@ -275,8 +310,8 @@ class _EntryFiles:
 
 
 def _compute_entry_files(
-    dirs_with_py: set[Path], nodes: set[Path], edge_names: EdgeNames
-) -> dict[Path, _EntryFiles]:
+    dirs_with_py: AbstractSet[Path], nodes: AbstractSet[Path], edge_names: EdgeNames
+) -> Mapping[Path, _EntryFiles]:
     entry_by_dir: dict[Path, set[Path]] = {}
     outside_importers_by_dir: dict[Path, set[Path]] = {}
     for importer_rel, target_rel in edge_names:
@@ -319,10 +354,10 @@ class _Misplaced:
 
 
 def _compute_misplaced(
-    nodes: set[Path],
-    adj: dict[Path, set[Path]],
-    radj: dict[Path, set[Path]],
-) -> list[_Misplaced]:
+    nodes: AbstractSet[Path],
+    adj: Mapping[Path, AbstractSet[Path]],
+    radj: Mapping[Path, AbstractSet[Path]],
+) -> tuple[_Misplaced, ...]:
     results: list[_Misplaced] = []
     for f in nodes:
         importers = radj.get(f, set()) - {f}
@@ -348,18 +383,18 @@ def _compute_misplaced(
             imported_by = sum(1 for p in importers if p.parent == other_dir)
             imports = sum(1 for p in imports_of if p.parent == other_dir)
             results.append(_Misplaced(f, own, other, other_dir, imported_by, imports))
-    return results
+    return tuple(results)
 
 
 def render_metrics(
-    dirs_with_py: set[Path],
+    dirs_with_py: AbstractSet[Path],
     edge_names: EdgeNames,
-    file_scores: dict[Path, FileScore],
-    dir_scores: dict[Path, DirScore],
-    defined_names: dict[Path, set[str]],
-    adj: dict[Path, set[Path]],
-    radj: dict[Path, set[Path]],
-) -> list[str]:
+    file_scores: Mapping[Path, FileScore],
+    dir_scores: Mapping[Path, DirScore],
+    defined_names: Mapping[Path, AbstractSet[str]],
+    adj: Mapping[Path, AbstractSet[Path]],
+    radj: Mapping[Path, AbstractSet[Path]],
+) -> tuple[str, ...]:
     nodes = set(adj)
     n = len(nodes)
     dependents = {p: fs.dependents for p, fs in file_scores.items()}
@@ -381,16 +416,16 @@ def render_metrics(
 
     lines.append("Top 10 by dependents:")
     lines.append("")
-    for path, count in _top_n_by_count(dependents):
-        share = count / n * 100 if n else 0.0
-        lines.append(f"- {path}: {count} ({share:.1f}% of N)")
+    for cp in _top_n_by_count(dependents):
+        share = cp.count / n * 100 if n else 0.0
+        lines.append(f"- {cp.path}: {cp.count} ({share:.1f}% of N)")
     lines.append("")
 
     lines.append("Top 10 by dependencies:")
     lines.append("")
-    for path, count in _top_n_by_count(dependencies):
-        share = count / n * 100 if n else 0.0
-        lines.append(f"- {path}: {count} ({share:.1f}% of N)")
+    for cp in _top_n_by_count(dependencies):
+        share = cp.count / n * 100 if n else 0.0
+        lines.append(f"- {cp.path}: {cp.count} ({share:.1f}% of N)")
     lines.append("")
 
     lines.append(
@@ -542,4 +577,4 @@ def render_metrics(
         )
     lines.append("")
 
-    return lines
+    return tuple(lines)

@@ -3,6 +3,7 @@ lives in `_cycles`), and the printing of all check findings."""
 
 import os
 import tomllib
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -19,7 +20,7 @@ def _has_project_table(pyproject: Path) -> bool:
     return "project" in data
 
 
-def find_package_roots(repo: Path) -> list[Path]:
+def find_package_roots(repo: Path) -> tuple[Path, ...]:
     """Directories (relative to repo) whose pyproject.toml has a [project]
     table, used only to anchor the privacy rule's "package root". Sorted
     deepest-first so the closest ancestor is found first."""
@@ -30,17 +31,17 @@ def find_package_roots(repo: Path) -> list[Path]:
             Path(dirpath) / "pyproject.toml"
         ):
             roots.append(Path(dirpath).relative_to(repo))
-    return sorted(roots, key=lambda p: len(p.parts), reverse=True)
+    return tuple(sorted(roots, key=lambda p: len(p.parts), reverse=True))
 
 
-def _owning_package_root(rel: Path, package_roots: list[Path]) -> Path:
+def _owning_package_root(rel: Path, package_roots: Sequence[Path]) -> Path:
     for root in package_roots:
         if root != Path(".") and rel.is_relative_to(root):
             return root
     return Path(".")
 
 
-def _private_owner_dir(rel: Path, package_roots: list[Path]) -> Path | None:
+def _private_owner_dir(rel: Path, package_roots: Sequence[Path]) -> Path | None:
     """The directory a private file/dir component makes it private to, or
     None if no component of rel (relative to its package root) is private."""
     root = _owning_package_root(rel, package_roots)
@@ -63,8 +64,8 @@ class _PrivacyViolation:
 
 
 def find_privacy_violations(
-    edge_names: EdgeNames, package_roots: list[Path]
-) -> list[_PrivacyViolation]:
+    edge_names: EdgeNames, package_roots: Sequence[Path]
+) -> tuple[_PrivacyViolation, ...]:
     violations: list[_PrivacyViolation] = []
     owner_cache: dict[Path, Path | None] = {}
 
@@ -80,20 +81,26 @@ def find_privacy_violations(
         violations.append(_PrivacyViolation(importer_rel, target_rel, owner))
 
     violations.sort(key=lambda v: (str(v.importer), str(v.target)))
-    return violations
+    return tuple(violations)
 
 
-def _name_owner(target_rel: Path) -> tuple[Path, bool]:
-    """Where a name imported `from target_rel import _x` is private to:
-    (owner, owner_is_dir). A package (`__init__.py` file, or a namespace
-    package directory with no `__init__.py`) makes its names visible to
-    files under that directory; a single module file makes its names
-    visible to no other file at all."""
+@dataclass(frozen=True, slots=True)
+class _NameOwner:
+    """Where a name imported `from target_rel import _x` is private to."""
+
+    owner: Path
+    owner_is_dir: bool
+
+
+def _name_owner(target_rel: Path) -> _NameOwner:
+    """A package (`__init__.py` file, or a namespace package directory with
+    no `__init__.py`) makes its names visible to files under that directory;
+    a single module file makes its names visible to no other file at all."""
     if target_rel.name == "__init__.py":
-        return target_rel.parent, True
+        return _NameOwner(target_rel.parent, True)
     if target_rel.suffix != ".py":
-        return target_rel, True
-    return target_rel, False
+        return _NameOwner(target_rel, True)
+    return _NameOwner(target_rel, False)
 
 
 @dataclass(frozen=True, slots=True)
@@ -108,27 +115,33 @@ class _NameViolation:
     owner_is_dir: bool
 
 
-def find_name_violations(edge_names: EdgeNames) -> list[_NameViolation]:
+def find_name_violations(edge_names: EdgeNames) -> tuple[_NameViolation, ...]:
     violations: list[_NameViolation] = []
     for (importer_rel, target_rel), names in edge_names.items():
         for name in names:
             if not is_private_name(name):
                 continue
-            owner, owner_is_dir = _name_owner(target_rel)
-            if owner_is_dir and importer_rel.is_relative_to(owner):
+            owner_info = _name_owner(target_rel)
+            if owner_info.owner_is_dir and importer_rel.is_relative_to(owner_info.owner):
                 continue
             violations.append(
-                _NameViolation(importer_rel, target_rel, name, owner, owner_is_dir)
+                _NameViolation(
+                    importer_rel,
+                    target_rel,
+                    name,
+                    owner_info.owner,
+                    owner_info.owner_is_dir,
+                )
             )
     violations.sort(key=lambda v: (str(v.importer), str(v.target), v.name))
-    return violations
+    return tuple(violations)
 
 
 def print_check_findings(
-    cycle_findings: list[CycleFinding],
+    cycle_findings: Sequence[CycleFinding],
     distinct_file_cycles: int,
-    privacy_violations: list[_PrivacyViolation],
-    name_violations: list[_NameViolation],
+    privacy_violations: Sequence[_PrivacyViolation],
+    name_violations: Sequence[_NameViolation],
 ) -> bool:
     """Prints findings, returns True if any finding exists."""
     any_finding = (
@@ -151,8 +164,8 @@ def print_check_findings(
         print(f"- {directory_label}: {len(cf.members)} nodes")
         print(f"  members: {', '.join(str(m) for m in cf.members)}")
         print(f"  example: {' -> '.join(str(n) for n in cf.example)}")
-        for a, b in cf.example_files:
-            print(f"    {a} -> {b}")
+        for edge in cf.example_files:
+            print(f"    {edge.importer} -> {edge.target}")
     print()
 
     total_private = len(privacy_violations) + len(name_violations)

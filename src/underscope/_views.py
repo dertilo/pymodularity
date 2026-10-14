@@ -4,7 +4,8 @@ cycle section via `_cycles`)."""
 
 import html
 import os
-from collections.abc import Callable
+from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -29,13 +30,21 @@ def _view_index_path(out_dir: Path, directory: Path, name: str = "index.md") -> 
 
 
 @dataclass(frozen=True, slots=True)
+class _NamedCount:
+    """One imported name with the count of units importing it."""
+
+    name: str
+    count: int
+
+
+@dataclass(frozen=True, slots=True)
 class _NodeRow:
     """One inside child's row in a view's summary node table."""
 
     node: Path
     importing_units: int
     distinct_names: int
-    top_names: list[tuple[str, int]]
+    top_names: tuple[_NamedCount, ...]
     internal: int
     outgoing: int
     root: int | None
@@ -48,13 +57,13 @@ class _NodeRow:
 
 def _compute_node_rows(
     repo: Path,
-    inside_nodes: set[Path],
-    dirs_with_py: set[Path],
+    inside_nodes: AbstractSet[Path],
+    dirs_with_py: AbstractSet[Path],
     pair_edges: PairEdges,
     edge_names: EdgeNames,
-    file_scores: dict[Path, FileScore],
-    dir_scores: dict[Path, DirScore],
-) -> list[_NodeRow]:
+    file_scores: Mapping[Path, FileScore],
+    dir_scores: Mapping[Path, DirScore],
+) -> tuple[_NodeRow, ...]:
     rows: list[_NodeRow] = []
     for node in inside_nodes:
         incoming_file_pairs: set[EdgeKey] = set()
@@ -76,7 +85,7 @@ def _compute_node_rows(
                         private += 1
 
         top_names = sorted(name_units.items(), key=lambda kv: (-len(kv[1]), kv[0]))[:5]
-        top_names_fmt = [(name, len(units)) for name, units in top_names]
+        top_names_fmt = tuple(_NamedCount(name, len(units)) for name, units in top_names)
 
         internal_pairs = {
             (f_rel, t_rel)
@@ -124,7 +133,7 @@ def _compute_node_rows(
         )
 
     rows.sort(key=lambda r: (-r.importing_units, str(r.node)))
-    return rows
+    return tuple(rows)
 
 
 # an SCC with at most this many internal edges (one per ordered (src, tgt)
@@ -135,14 +144,14 @@ _SCC_FULL_EDGE_LIMIT = 30
 
 def _render_summary(
     repo: Path,
-    inside_nodes: set[Path],
-    dirs_with_py: set[Path],
+    inside_nodes: AbstractSet[Path],
+    dirs_with_py: AbstractSet[Path],
     pair_edges: PairEdges,
     edge_names: EdgeNames,
     label: Callable[[Path], str],
-    file_scores: dict[Path, FileScore],
-    dir_scores: dict[Path, DirScore],
-) -> list[str]:
+    file_scores: Mapping[Path, FileScore],
+    dir_scores: Mapping[Path, DirScore],
+) -> tuple[str, ...]:
     lines: list[str] = ["## Cycles", ""]
     sccs = compute_sccs(inside_nodes, pair_edges)
     if not sccs:
@@ -201,7 +210,7 @@ def _render_summary(
     for row in rows:
         names_cell = str(row.distinct_names)
         if row.top_names:
-            top_str = ", ".join(f"{n} ({c})" for n, c in row.top_names)
+            top_str = ", ".join(f"{nc.name} ({nc.count})" for nc in row.top_names)
             names_cell = f"{row.distinct_names} ({top_str})"
         root_cell = "-" if row.root is None else f"{row.root}/{row.internals}"
         left = f"| {label(row.node)} | {row.importing_units} | {names_cell} |"
@@ -241,7 +250,7 @@ def _render_summary(
         + "transitively, and their product"
     )
     lines.append("")
-    return lines
+    return tuple(lines)
 
 
 _MERMAID_CDN_URL = "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs"
@@ -253,12 +262,12 @@ _MERMAID_MAX_EDGES = 1_000
 
 
 def _build_mermaid_lines(
-    nodes: set[Path],
-    ids: dict[Path, str],
-    outside_nodes: set[Path],
+    nodes: AbstractSet[Path],
+    ids: Mapping[Path, str],
+    outside_nodes: AbstractSet[Path],
     label: Callable[[Path], str],
-    ordered_pairs: list[tuple[PairKey, set[EdgeKey]]],
-) -> list[str]:
+    ordered_pairs: Sequence[tuple[PairKey, AbstractSet[EdgeKey]]],
+) -> tuple[str, ...]:
     lines: list[str] = ["flowchart LR"]
     lines.append("    classDef outside fill:#eee,stroke:#999,stroke-dasharray: 5 5;")
     for n in sorted(nodes, key=str):
@@ -269,15 +278,15 @@ def _build_mermaid_lines(
         lines.append(
             "    class " + ",".join(sorted(ids[n] for n in outside_nodes)) + " outside;"
         )
-    return lines
+    return tuple(lines)
 
 
 def _write_html_view(
     out_dir: Path,
     directory: Path,
-    mermaid_lines: list[str],
-    nodes: set[Path],
-    dirs_with_py: set[Path],
+    mermaid_lines: Sequence[str],
+    nodes: AbstractSet[Path],
+    dirs_with_py: AbstractSet[Path],
 ) -> None:
     html_path = _view_index_path(out_dir, directory, "index.html")
     title = "repo root" if directory == Path(".") else str(directory)
@@ -331,12 +340,12 @@ def write_view(
     out_dir: Path,
     repo: Path,
     directory: Path,
-    dirs_with_py: set[Path],
+    dirs_with_py: AbstractSet[Path],
     pair_edges: PairEdges,
     edge_names: EdgeNames,
     write_html: bool,
-    file_scores: dict[Path, FileScore],
-    dir_scores: dict[Path, DirScore],
+    file_scores: Mapping[Path, FileScore],
+    dir_scores: Mapping[Path, DirScore],
 ) -> None:
     index_path = _view_index_path(out_dir, directory)
     index_path.parent.mkdir(parents=True, exist_ok=True)

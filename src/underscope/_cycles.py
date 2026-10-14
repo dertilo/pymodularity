@@ -3,6 +3,8 @@ produces (feeding both `check`'s cycle ban and the Cycles section of
 `graph`'s views), and the file-level cycle count on the raw file graph."""
 
 import itertools
+from collections.abc import Mapping, Sequence
+from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -35,12 +37,14 @@ class _Scc:
     """A strongly connected component (size >= 2) among a view's inside
     children, on the edges the view draws."""
 
-    members: list[Path]
-    mutual_pairs: list[_MutualPair]
-    edges: list[_SccEdge]
+    members: tuple[Path, ...]
+    mutual_pairs: tuple[_MutualPair, ...]
+    edges: tuple[_SccEdge, ...]
 
 
-def _tarjan_sccs(nodes: set[Path], adj: dict[Path, set[Path]]) -> list[list[Path]]:
+def _tarjan_sccs(
+    nodes: AbstractSet[Path], adj: Mapping[Path, AbstractSet[Path]]
+) -> tuple[tuple[Path, ...], ...]:
     """Iterative Tarjan (explicit stack, no recursion) so large views can't
     hit the recursion limit."""
     counter = 0
@@ -94,10 +98,12 @@ def _tarjan_sccs(nodes: set[Path], adj: dict[Path, set[Path]]) -> list[list[Path
                     if w == v:
                         break
                 sccs.append(comp)
-    return sccs
+    return tuple(tuple(comp) for comp in sccs)
 
 
-def compute_sccs(inside_nodes: set[Path], pair_edges: PairEdges) -> list[_Scc]:
+def compute_sccs(
+    inside_nodes: AbstractSet[Path], pair_edges: PairEdges
+) -> tuple[_Scc, ...]:
     adj: dict[Path, set[Path]] = {n: set() for n in inside_nodes}
     file_counts: dict[EdgeKey, int] = {}
     for (src, tgt), file_pairs in pair_edges.items():
@@ -134,13 +140,15 @@ def compute_sccs(inside_nodes: set[Path], pair_edges: PairEdges) -> list[_Scc]:
             ),
             key=lambda e: (str(e.src), str(e.tgt)),
         )
-        result.append(_Scc(members, mutual_pairs, edges))
+        result.append(_Scc(tuple(members), tuple(mutual_pairs), tuple(edges)))
 
     result.sort(key=lambda scc: (-len(scc.members), str(scc.members[0])))
-    return result
+    return tuple(result)
 
 
-def _find_example_cycle(members: list[Path], pair_edges: PairEdges) -> list[Path]:
+def _find_example_cycle(
+    members: Sequence[Path], pair_edges: PairEdges
+) -> tuple[Path, ...]:
     """One concrete node loop (first == last) through the SCC, via DFS."""
     member_set = set(members)
     adj: dict[Path, list[Path]] = {m: [] for m in members}
@@ -154,10 +162,10 @@ def _find_example_cycle(members: list[Path], pair_edges: PairEdges) -> list[Path
     stack: list[Path] = [start]
     visited: set[Path] = {start}
 
-    def dfs(node: Path) -> list[Path] | None:
+    def dfs(node: Path) -> tuple[Path, ...] | None:
         for nxt in adj[node]:
             if nxt == start and len(stack) > 1:
-                return [*stack, start]
+                return (*stack, start)
             if nxt not in visited:
                 visited.add(nxt)
                 stack.append(nxt)
@@ -167,18 +175,27 @@ def _find_example_cycle(members: list[Path], pair_edges: PairEdges) -> list[Path
                 stack.pop()
         return None
 
-    return dfs(start) or [start]
+    return dfs(start) or (start,)
+
+
+@dataclass(frozen=True, slots=True)
+class FileEdge:
+    """One concrete (importer file, target file) import edge."""
+
+    importer: Path
+    target: Path
 
 
 def _example_file_edges(
-    example: list[Path], pair_edges: PairEdges
-) -> list[tuple[Path, Path]]:
-    out: list[tuple[Path, Path]] = []
+    example: Sequence[Path], pair_edges: PairEdges
+) -> tuple[FileEdge, ...]:
+    out: list[FileEdge] = []
     for a, b in itertools.pairwise(example):
         file_pairs = pair_edges.get((a, b))
         if file_pairs:
-            out.append(min(file_pairs, key=lambda p: (str(p[0]), str(p[1]))))
-    return out
+            best = min(file_pairs, key=lambda p: (str(p[0]), str(p[1])))
+            out.append(FileEdge(best[0], best[1]))
+    return tuple(out)
 
 
 @dataclass(frozen=True, slots=True)
@@ -187,14 +204,14 @@ class CycleFinding:
     example loop through file-level edges."""
 
     directory: Path
-    members: list[Path]
-    example: list[Path]
-    example_files: list[tuple[Path, Path]]
+    members: tuple[Path, ...]
+    example: tuple[Path, ...]
+    example_files: tuple[FileEdge, ...]
 
 
 def _find_cycle_findings(
-    directory: Path, inside_nodes: set[Path], pair_edges: PairEdges
-) -> list[CycleFinding]:
+    directory: Path, inside_nodes: AbstractSet[Path], pair_edges: PairEdges
+) -> tuple[CycleFinding, ...]:
     findings: list[CycleFinding] = []
     for scc in compute_sccs(inside_nodes, pair_edges):
         example = _find_example_cycle(scc.members, pair_edges)
@@ -203,10 +220,10 @@ def _find_cycle_findings(
                 directory, scc.members, example, _example_file_edges(example, pair_edges)
             )
         )
-    return findings
+    return tuple(findings)
 
 
-def count_file_level_cycles(adj: dict[Path, set[Path]]) -> int:
+def count_file_level_cycles(adj: Mapping[Path, AbstractSet[Path]]) -> int:
     """Distinct cycles on the raw file-level graph, ignoring any directory
     view's aggregation -- the number of genuinely separate root causes."""
     sccs = _tarjan_sccs(set(adj), adj)
@@ -214,8 +231,8 @@ def count_file_level_cycles(adj: dict[Path, set[Path]]) -> int:
 
 
 def find_all_cycle_findings(
-    dirs_with_py: set[Path], edge_names: EdgeNames
-) -> list[CycleFinding]:
+    dirs_with_py: AbstractSet[Path], edge_names: EdgeNames
+) -> tuple[CycleFinding, ...]:
     """The cycle ban `check` enforces: every directory's view, scanned for
     SCCs (size >= 2) among its inside children."""
     findings: list[CycleFinding] = []
@@ -223,4 +240,4 @@ def find_all_cycle_findings(
         pair_edges = build_view(directory, edge_names)
         inside_nodes = compute_inside_nodes(directory, pair_edges)
         findings.extend(_find_cycle_findings(directory, inside_nodes, pair_edges))
-    return findings
+    return tuple(findings)
