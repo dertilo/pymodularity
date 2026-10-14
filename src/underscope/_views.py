@@ -14,22 +14,22 @@ from underscope._resolve import EdgeKey, EdgeNames, is_private_name
 from underscope._view_edges import PairEdges, PairKey, compute_inside_nodes
 
 # (link text, relative link target) for the markdown "Links:" list
-Link = tuple[str, str]
+_Link = tuple[str, str]
 
 
-def mermaid_id(path: Path) -> str:
+def _mermaid_id(path: Path) -> str:
     s = str(path).replace("\\", "/")
     return "n_" + "".join(c if c.isalnum() else "_" for c in s)
 
 
-def view_index_path(out_dir: Path, directory: Path, name: str = "index.md") -> Path:
+def _view_index_path(out_dir: Path, directory: Path, name: str = "index.md") -> Path:
     if directory == Path("."):
         return out_dir / name
     return out_dir / directory / name
 
 
 @dataclass(frozen=True, slots=True)
-class NodeRow:
+class _NodeRow:
     """One inside child's row in a view's summary node table."""
 
     node: Path
@@ -46,7 +46,7 @@ class NodeRow:
     score: int
 
 
-def compute_node_rows(
+def _compute_node_rows(
     repo: Path,
     inside_nodes: set[Path],
     dirs_with_py: set[Path],
@@ -54,8 +54,8 @@ def compute_node_rows(
     edge_names: EdgeNames,
     file_scores: dict[Path, FileScore],
     dir_scores: dict[Path, DirScore],
-) -> list[NodeRow]:
-    rows: list[NodeRow] = []
+) -> list[_NodeRow]:
+    rows: list[_NodeRow] = []
     for node in inside_nodes:
         incoming_file_pairs: set[EdgeKey] = set()
         importing_units: set[Path] = set()
@@ -107,7 +107,7 @@ def compute_node_rows(
             reach_a, reach_b, score = fs.dependents, fs.dependencies, fs.score
 
         rows.append(
-            NodeRow(
+            _NodeRow(
                 node,
                 len(importing_units),
                 len(distinct_target_names),
@@ -130,10 +130,10 @@ def compute_node_rows(
 # an SCC with at most this many internal edges (one per ordered (src, tgt)
 # child pair, not file pairs) lists every edge; above it, only mutual pairs
 # are listed plus a count of the rest (see Edges for those).
-SCC_FULL_EDGE_LIMIT = 30
+_SCC_FULL_EDGE_LIMIT = 30
 
 
-def render_summary(
+def _render_summary(
     repo: Path,
     inside_nodes: set[Path],
     dirs_with_py: set[Path],
@@ -158,10 +158,10 @@ def render_summary(
                 (mp.b, mp.a) for mp in scc.mutual_pairs
             }
             one_way = [e for e in scc.edges if (e.src, e.tgt) not in mutual_members]
-            if not scc.mutual_pairs or len(scc.edges) <= SCC_FULL_EDGE_LIMIT:
+            if not scc.mutual_pairs or len(scc.edges) <= _SCC_FULL_EDGE_LIMIT:
                 # A->B->C->A with no mutual pair: the one-way edges are the
                 # cycle itself, so keep the full list instead of collapsing
-                # it. Small SCCs (<= SCC_FULL_EDGE_LIMIT internal edges) also
+                # it. Small SCCs (<= _SCC_FULL_EDGE_LIMIT internal edges) also
                 # list every one-way edge instead of collapsing to a count.
                 for e in one_way:
                     lines.append(f"  - {label(e.src)} -> {label(e.tgt)} ({e.files})")
@@ -175,7 +175,7 @@ def render_summary(
             + "(distinct importer,target file pairs, same count as an Edges heading)."
         )
         lines.append(
-            f"An SCC with at most {SCC_FULL_EDGE_LIMIT} internal edges (one "
+            f"An SCC with at most {_SCC_FULL_EDGE_LIMIT} internal edges (one "
             + "per ordered child pair) lists every one-way edge as "
             + "`a -> b (N)`; above that, the one-way edges shrink to a count, "
             + "see Edges, unless the SCC has no mutual pair."
@@ -184,7 +184,7 @@ def render_summary(
 
     lines.append("## Node summary")
     lines.append("")
-    rows = compute_node_rows(
+    rows = _compute_node_rows(
         repo,
         inside_nodes,
         dirs_with_py,
@@ -244,15 +244,15 @@ def render_summary(
     return lines
 
 
-MERMAID_CDN_URL = "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs"
+_MERMAID_CDN_URL = "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs"
 # headroom above mermaid's defaults (maxTextSize 50000, maxEdges 500): the
 # largest view seen in practice had a ~38000-char mermaid block with ~400
 # edges, so double both defaults.
-MERMAID_MAX_TEXT_SIZE = 100_000
-MERMAID_MAX_EDGES = 1_000
+_MERMAID_MAX_TEXT_SIZE = 100_000
+_MERMAID_MAX_EDGES = 1_000
 
 
-def build_mermaid_lines(
+def _build_mermaid_lines(
     nodes: set[Path],
     ids: dict[Path, str],
     outside_nodes: set[Path],
@@ -272,27 +272,27 @@ def build_mermaid_lines(
     return lines
 
 
-def write_html_view(
+def _write_html_view(
     out_dir: Path,
     directory: Path,
     mermaid_lines: list[str],
     nodes: set[Path],
     dirs_with_py: set[Path],
 ) -> None:
-    html_path = view_index_path(out_dir, directory, "index.html")
+    html_path = _view_index_path(out_dir, directory, "index.html")
     title = "repo root" if directory == Path(".") else str(directory)
 
     body_lines = list(mermaid_lines)
     for n in sorted(nodes, key=str):
         if n in dirs_with_py:
-            target_html = view_index_path(out_dir, n, "index.html")
+            target_html = _view_index_path(out_dir, n, "index.html")
             rel_link = os.path.relpath(target_html, start=html_path.parent)
-            body_lines.append(f'    click {mermaid_id(n)} "{rel_link}"')
+            body_lines.append(f'    click {_mermaid_id(n)} "{rel_link}"')
     mermaid_src = html.escape("\n".join(body_lines))
 
     parent_link_html = ""
     if directory != Path("."):
-        parent_index = view_index_path(out_dir, directory.parent, "index.html")
+        parent_index = _view_index_path(out_dir, directory.parent, "index.html")
         rel_link = os.path.relpath(parent_index, start=html_path.parent)
         parent_link_html = f'<p><a href="{rel_link}">parent view</a></p>\n'
 
@@ -312,12 +312,12 @@ pre.mermaid svg {{ max-width: none !important; }}
 {mermaid_src}
 </pre>
 <script type="module">
-import mermaid from "{MERMAID_CDN_URL}";
+import mermaid from "{_MERMAID_CDN_URL}";
 mermaid.initialize({{
   startOnLoad: true,
   securityLevel: "loose",
-  maxTextSize: {MERMAID_MAX_TEXT_SIZE},
-  maxEdges: {MERMAID_MAX_EDGES},
+  maxTextSize: {_MERMAID_MAX_TEXT_SIZE},
+  maxEdges: {_MERMAID_MAX_EDGES},
   flowchart: {{ useMaxWidth: false }}
 }});
 </script>
@@ -338,7 +338,7 @@ def write_view(
     file_scores: dict[Path, FileScore],
     dir_scores: dict[Path, DirScore],
 ) -> None:
-    index_path = view_index_path(out_dir, directory)
+    index_path = _view_index_path(out_dir, directory)
     index_path.parent.mkdir(parents=True, exist_ok=True)
 
     nodes: set[Path] = set()
@@ -346,7 +346,7 @@ def write_view(
         nodes.add(src)
         nodes.add(tgt)
 
-    ids = {n: mermaid_id(n) for n in nodes}
+    ids = {n: _mermaid_id(n) for n in nodes}
     inside_nodes = compute_inside_nodes(directory, pair_edges)
     outside_nodes = nodes - inside_nodes
 
@@ -358,17 +358,17 @@ def write_view(
     lines.append(f"# import graph: {title}")
     lines.append("")
 
-    links: list[Link] = []  # (text, target_index_path) for nodes that have a view
+    links: list[_Link] = []  # (text, target_index_path) for nodes that have a view
 
     if directory != Path("."):
         parent = directory.parent
-        parent_index = view_index_path(out_dir, parent)
+        parent_index = _view_index_path(out_dir, parent)
         rel_link = os.path.relpath(parent_index, start=index_path.parent)
         lines.append(f"[parent view]({rel_link})")
         lines.append("")
 
     lines.extend(
-        render_summary(
+        _render_summary(
             repo,
             inside_nodes,
             dirs_with_py,
@@ -383,14 +383,14 @@ def write_view(
     ordered_pairs = sorted(
         pair_edges.items(), key=lambda kv: (str(kv[0][0]), str(kv[0][1]))
     )
-    mermaid_lines = build_mermaid_lines(nodes, ids, outside_nodes, label, ordered_pairs)
+    mermaid_lines = _build_mermaid_lines(nodes, ids, outside_nodes, label, ordered_pairs)
 
     lines.append("```mermaid")
     lines.extend(mermaid_lines)
 
     for n in sorted(nodes, key=str):
         if n in dirs_with_py:
-            target_index = view_index_path(out_dir, n)
+            target_index = _view_index_path(out_dir, n)
             rel_link = os.path.relpath(target_index, start=index_path.parent)
             links.append((str(n), rel_link))
     lines.append("```")
@@ -421,4 +421,4 @@ def write_view(
     index_path.write_text("\n".join(lines), encoding="utf-8")
 
     if write_html:
-        write_html_view(out_dir, directory, mermaid_lines, nodes, dirs_with_py)
+        _write_html_view(out_dir, directory, mermaid_lines, nodes, dirs_with_py)

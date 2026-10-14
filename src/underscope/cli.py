@@ -15,7 +15,7 @@ strongly connected components (size >= 2) among the view's inside children
 on the view's own edges, outside (dashed) nodes excluded; the node table
 lists one row per inside child. Both sections carry their own legend text
 in the rendered output defining each count; see that legend for units and
-for the SCC_FULL_EDGE_LIMIT threshold controlling full vs. collapsed
+for the _SCC_FULL_EDGE_LIMIT threshold controlling full vs. collapsed
 one-way-edge lists in Cycles.
 
 WARNING, blind spot: the graph shows import coupling only, a lower bound on
@@ -79,23 +79,23 @@ from underscope._views import write_view
 __version__ = "0.1.0"
 
 
-class CheckArgs(argparse.Namespace):
+class _CheckArgs(argparse.Namespace):
     # placeholder default for the static type only; argparse always
     # overwrites it before parse_args() returns
     repo: Path = Path()
 
 
-class GraphArgs(argparse.Namespace):
+class _GraphArgs(argparse.Namespace):
     repo: Path = Path()
     out: Path = Path()
     html: bool = False
 
 
-class MetricsArgs(argparse.Namespace):
+class _MetricsArgs(argparse.Namespace):
     repo: Path = Path()
 
 
-def run_check(repo: Path) -> int:
+def _run_check(repo: Path) -> int:
     """`underscope check <repo>`: the import-cycle and privacy-convention
     checks, findings printed to stdout, exit 1 on any finding, no views
     written."""
@@ -113,7 +113,7 @@ def run_check(repo: Path) -> int:
     return 1 if any_finding else 0
 
 
-def run_graph(repo: Path, out_dir: Path, write_html: bool) -> int:
+def _run_graph(repo: Path, out_dir: Path, write_html: bool) -> int:
     """`underscope graph <repo> --out DIR [--html]`: writes one mermaid
     view per directory under DIR."""
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -140,7 +140,7 @@ def run_graph(repo: Path, out_dir: Path, write_html: bool) -> int:
     return 0
 
 
-def run_metrics(repo: Path) -> int:
+def _run_metrics(repo: Path) -> int:
     """`underscope metrics <repo>`: prints a coupling report to stdout,
     always exits 0."""
     graph = build_graph(repo)
@@ -208,18 +208,18 @@ def main() -> int:
     args = parser.parse_args()
 
     if args.command == "check":
-        check_args = CheckArgs()
+        check_args = _CheckArgs()
         check_args.repo = args.repo
-        return run_check(check_args.repo.resolve())
+        return _run_check(check_args.repo.resolve())
     if args.command == "graph":
-        graph_args = GraphArgs()
+        graph_args = _GraphArgs()
         graph_args.repo = args.repo
         graph_args.out = args.out
         graph_args.html = args.html
-        return run_graph(graph_args.repo.resolve(), graph_args.out, graph_args.html)
-    metrics_args = MetricsArgs()
+        return _run_graph(graph_args.repo.resolve(), graph_args.out, graph_args.html)
+    metrics_args = _MetricsArgs()
     metrics_args.repo = args.repo
-    return run_metrics(metrics_args.repo.resolve())
+    return _run_metrics(metrics_args.repo.resolve())
 
 
 if __name__ == "__main__":

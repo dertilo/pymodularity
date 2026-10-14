@@ -7,7 +7,7 @@ from pathlib import Path
 from underscope._resolve import EdgeNames
 
 
-def reachable_set(start: Path, adj: dict[Path, set[Path]]) -> set[Path]:
+def _reachable_set(start: Path, adj: dict[Path, set[Path]]) -> set[Path]:
     """Every other node `start` can reach, following `adj` (BFS/DFS, order
     doesn't matter); `start` itself never counts even inside a cycle back
     to itself."""
@@ -22,18 +22,18 @@ def reachable_set(start: Path, adj: dict[Path, set[Path]]) -> set[Path]:
     return seen
 
 
-def compute_reach(
+def _compute_reach(
     nodes: set[Path], adj: dict[Path, set[Path]], radj: dict[Path, set[Path]]
 ) -> tuple[dict[Path, set[Path]], dict[Path, set[Path]]]:
     """Per file: the set of dependents (other files with an import path to
     it) and the set of dependencies (other files it has an import path
     to), both transitive."""
-    dependents = {n: reachable_set(n, radj) for n in nodes}
-    dependencies = {n: reachable_set(n, adj) for n in nodes}
+    dependents = {n: _reachable_set(n, radj) for n in nodes}
+    dependencies = {n: _reachable_set(n, adj) for n in nodes}
     return dependents, dependencies
 
 
-def top_n_by_count(counts: dict[Path, int], n: int = 10) -> list[tuple[Path, int]]:
+def _top_n_by_count(counts: dict[Path, int], n: int = 10) -> list[tuple[Path, int]]:
     return sorted(counts.items(), key=lambda kv: (-kv[1], str(kv[0])))[:n]
 
 
@@ -60,7 +60,7 @@ class DirScore:
     score: int
 
 
-def compute_file_scores(
+def _compute_file_scores(
     nodes: set[Path],
     dependents: dict[Path, set[Path]],
     dependencies: dict[Path, set[Path]],
@@ -81,13 +81,13 @@ def compute_scores(
     """`graph` and `metrics`'s shared first step: reach, then file and
     directory scores from it."""
     nodes = set(adj)
-    dependents, dependencies = compute_reach(nodes, adj, radj)
-    file_scores = compute_file_scores(nodes, dependents, dependencies)
-    dir_scores = compute_dir_scores(dirs_with_py, dependents, dependencies)
+    dependents, dependencies = _compute_reach(nodes, adj, radj)
+    file_scores = _compute_file_scores(nodes, dependents, dependencies)
+    dir_scores = _compute_dir_scores(dirs_with_py, dependents, dependencies)
     return file_scores, dir_scores
 
 
-def ancestor_dirs(rel: Path) -> list[Path]:
+def _ancestor_dirs(rel: Path) -> list[Path]:
     """The directory holding `rel` and every ancestor directory up to the
     repo root ('.'), inclusive."""
     out = [rel.parent]
@@ -96,7 +96,7 @@ def ancestor_dirs(rel: Path) -> list[Path]:
     return out
 
 
-def compute_dir_scores(
+def _compute_dir_scores(
     dirs_with_py: set[Path],
     dependents: dict[Path, set[Path]],
     dependencies: dict[Path, set[Path]],
@@ -104,11 +104,11 @@ def compute_dir_scores(
     dir_in: dict[Path, set[Path]] = {}
     dir_out: dict[Path, set[Path]] = {}
     for f, dep_set in dependents.items():
-        for d in ancestor_dirs(f):
+        for d in _ancestor_dirs(f):
             if d in dirs_with_py:
                 dir_in.setdefault(d, set()).update(dep_set)
     for f, dep_set in dependencies.items():
-        for d in ancestor_dirs(f):
+        for d in _ancestor_dirs(f):
             if d in dirs_with_py:
                 dir_out.setdefault(d, set()).update(dep_set)
 
@@ -121,7 +121,7 @@ def compute_dir_scores(
 
 
 @dataclass(frozen=True, slots=True)
-class FileWidth:
+class _FileWidth:
     """A target file's interface width: distinct names other files import
     from it, and distinct files importing any of those names."""
 
@@ -130,7 +130,7 @@ class FileWidth:
     importers: int
 
 
-def compute_file_widths(nodes: set[Path], edge_names: EdgeNames) -> list[FileWidth]:
+def _compute_file_widths(nodes: set[Path], edge_names: EdgeNames) -> list[_FileWidth]:
     names_by_target: dict[Path, set[str]] = {}
     bare_targets: set[Path] = set()
     importers_by_target: dict[Path, set[Path]] = {}
@@ -143,17 +143,17 @@ def compute_file_widths(nodes: set[Path], edge_names: EdgeNames) -> list[FileWid
         else:
             bare_targets.add(target_rel)
 
-    widths: list[FileWidth] = []
+    widths: list[_FileWidth] = []
     for target in nodes:
         name_count = len(names_by_target.get(target, set())) + (
             1 if target in bare_targets else 0
         )
         importer_count = len(importers_by_target.get(target, set()))
-        widths.append(FileWidth(target, name_count, importer_count))
+        widths.append(_FileWidth(target, name_count, importer_count))
     return widths
 
 
-def compute_wrapper_dirs(nodes: set[Path], dirs_with_py: set[Path]) -> set[Path]:
+def _compute_wrapper_dirs(nodes: set[Path], dirs_with_py: set[Path]) -> set[Path]:
     """Directories that hold no .py file of their own and have exactly one
     child directory with Python code, so their file set is identical to
     that child's (and, up a wrapper chain, to the file set of every other
@@ -178,7 +178,7 @@ def compute_wrapper_dirs(nodes: set[Path], dirs_with_py: set[Path]) -> set[Path]
 
 
 @dataclass(frozen=True, slots=True)
-class DirWidth:
+class _DirWidth:
     """A directory's interface width: distinct (target file, name) pairs
     files outside it import from files inside it, and distinct outside
     importing files."""
@@ -188,12 +188,14 @@ class DirWidth:
     importers: int
 
 
-def compute_dir_widths(dirs_with_py: set[Path], edge_names: EdgeNames) -> list[DirWidth]:
+def _compute_dir_widths(
+    dirs_with_py: set[Path], edge_names: EdgeNames
+) -> list[_DirWidth]:
     named_pairs: dict[Path, set[tuple[Path, str]]] = {}
     bare_targets: dict[Path, set[Path]] = {}
     importers: dict[Path, set[Path]] = {}
     for (importer_rel, target_rel), names in edge_names.items():
-        for directory in ancestor_dirs(target_rel):
+        for directory in _ancestor_dirs(target_rel):
             if directory not in dirs_with_py:
                 continue
             if importer_rel.is_relative_to(directory):
@@ -206,18 +208,18 @@ def compute_dir_widths(dirs_with_py: set[Path], edge_names: EdgeNames) -> list[D
             else:
                 bare_targets.setdefault(directory, set()).add(target_rel)
 
-    widths: list[DirWidth] = []
+    widths: list[_DirWidth] = []
     for directory in dirs_with_py:
         name_count = len(named_pairs.get(directory, set())) + len(
             bare_targets.get(directory, set())
         )
         importer_count = len(importers.get(directory, set()))
-        widths.append(DirWidth(directory, name_count, importer_count))
+        widths.append(_DirWidth(directory, name_count, importer_count))
     return widths
 
 
 @dataclass(frozen=True, slots=True)
-class Exposure:
+class _Exposure:
     """A file's exposure share: how many of its top-level defined names
     (def, async def, class, plain/annotated assignment to a bare name;
     imports don't count) at least one other file actually imports."""
@@ -229,9 +231,9 @@ class Exposure:
     importers: int
 
 
-def compute_exposure(
+def _compute_exposure(
     nodes: set[Path], edge_names: EdgeNames, defined_names: dict[Path, set[str]]
-) -> dict[Path, Exposure]:
+) -> dict[Path, _Exposure]:
     imported_names: dict[Path, set[str]] = {}
     importers_by_name: dict[Path, dict[str, set[Path]]] = {}
     for (importer_rel, target_rel), names in edge_names.items():
@@ -242,7 +244,7 @@ def compute_exposure(
         for name in names:
             per_name.setdefault(name, set()).add(importer_rel)
 
-    exposures: dict[Path, Exposure] = {}
+    exposures: dict[Path, _Exposure] = {}
     for f in nodes:
         if f.name == "__init__.py":
             continue
@@ -255,12 +257,12 @@ def compute_exposure(
         used = len(used_names)
         total = len(defined)
         share = used / total if total else 0.0
-        exposures[f] = Exposure(f, used, total, share, len(importer_set))
+        exposures[f] = _Exposure(f, used, total, share, len(importer_set))
     return exposures
 
 
 @dataclass(frozen=True, slots=True)
-class EntryFiles:
+class _EntryFiles:
     """A directory's entry-file share: how many of its files at least one
     file outside the directory imports directly, out of all files inside
     it; outside_importers is the distinct outside files doing so."""
@@ -272,13 +274,13 @@ class EntryFiles:
     outside_importers: int
 
 
-def compute_entry_files(
+def _compute_entry_files(
     dirs_with_py: set[Path], nodes: set[Path], edge_names: EdgeNames
-) -> dict[Path, EntryFiles]:
+) -> dict[Path, _EntryFiles]:
     entry_by_dir: dict[Path, set[Path]] = {}
     outside_importers_by_dir: dict[Path, set[Path]] = {}
     for importer_rel, target_rel in edge_names:
-        for directory in ancestor_dirs(target_rel):
+        for directory in _ancestor_dirs(target_rel):
             if directory not in dirs_with_py:
                 continue
             if importer_rel.is_relative_to(directory):
@@ -288,22 +290,22 @@ def compute_entry_files(
 
     files_by_dir: dict[Path, int] = {}
     for f in nodes:
-        for directory in ancestor_dirs(f):
+        for directory in _ancestor_dirs(f):
             if directory in dirs_with_py:
                 files_by_dir[directory] = files_by_dir.get(directory, 0) + 1
 
-    out: dict[Path, EntryFiles] = {}
+    out: dict[Path, _EntryFiles] = {}
     for directory in dirs_with_py:
         files = files_by_dir.get(directory, 0)
         entry = len(entry_by_dir.get(directory, set()))
         share = entry / files if files else 0.0
         outside = len(outside_importers_by_dir.get(directory, set()))
-        out[directory] = EntryFiles(directory, entry, files, share, outside)
+        out[directory] = _EntryFiles(directory, entry, files, share, outside)
     return out
 
 
 @dataclass(frozen=True, slots=True)
-class Misplaced:
+class _Misplaced:
     """A file whose direct import partners (files it imports plus files
     importing it, from the same file graph the scores use) cluster more
     heavily in some other directory than in its own."""
@@ -316,12 +318,12 @@ class Misplaced:
     imports: int
 
 
-def compute_misplaced(
+def _compute_misplaced(
     nodes: set[Path],
     adj: dict[Path, set[Path]],
     radj: dict[Path, set[Path]],
-) -> list[Misplaced]:
-    results: list[Misplaced] = []
+) -> list[_Misplaced]:
+    results: list[_Misplaced] = []
     for f in nodes:
         importers = radj.get(f, set()) - {f}
         imports_of = adj.get(f, set()) - {f}
@@ -345,7 +347,7 @@ def compute_misplaced(
         if other >= 3 and other > own:
             imported_by = sum(1 for p in importers if p.parent == other_dir)
             imports = sum(1 for p in imports_of if p.parent == other_dir)
-            results.append(Misplaced(f, own, other, other_dir, imported_by, imports))
+            results.append(_Misplaced(f, own, other, other_dir, imported_by, imports))
     return results
 
 
@@ -362,7 +364,7 @@ def render_metrics(
     n = len(nodes)
     dependents = {p: fs.dependents for p, fs in file_scores.items()}
     dependencies = {p: fs.dependencies for p, fs in file_scores.items()}
-    wrapper_dirs = compute_wrapper_dirs(nodes, dirs_with_py)
+    wrapper_dirs = _compute_wrapper_dirs(nodes, dirs_with_py)
 
     lines: list[str] = ["# Coupling report", ""]
     lines.append("## Reach")
@@ -379,14 +381,14 @@ def render_metrics(
 
     lines.append("Top 10 by dependents:")
     lines.append("")
-    for path, count in top_n_by_count(dependents):
+    for path, count in _top_n_by_count(dependents):
         share = count / n * 100 if n else 0.0
         lines.append(f"- {path}: {count} ({share:.1f}% of N)")
     lines.append("")
 
     lines.append("Top 10 by dependencies:")
     lines.append("")
-    for path, count in top_n_by_count(dependencies):
+    for path, count in _top_n_by_count(dependencies):
         share = count / n * 100 if n else 0.0
         lines.append(f"- {path}: {count} ({share:.1f}% of N)")
     lines.append("")
@@ -433,7 +435,7 @@ def render_metrics(
     lines.append("")
 
     file_widths = sorted(
-        compute_file_widths(nodes, edge_names),
+        _compute_file_widths(nodes, edge_names),
         key=lambda w: (-w.names, str(w.target)),
     )[:10]
     lines.append("Top 10 files by name count:")
@@ -445,7 +447,7 @@ def render_metrics(
     dir_widths = sorted(
         (
             w
-            for w in compute_dir_widths(dirs_with_py, edge_names)
+            for w in _compute_dir_widths(dirs_with_py, edge_names)
             if w.directory not in wrapper_dirs
         ),
         key=lambda w: (-w.names, str(w.directory)),
@@ -471,7 +473,7 @@ def render_metrics(
     lines.append("")
     exposures = [
         e
-        for e in compute_exposure(nodes, edge_names, defined_names).values()
+        for e in _compute_exposure(nodes, edge_names, defined_names).values()
         if e.defined >= 10
     ]
     exposures.sort(key=lambda e: (-e.share, -e.defined, str(e.path)))
@@ -497,7 +499,7 @@ def render_metrics(
     lines.append("")
     entries = [
         e
-        for e in compute_entry_files(dirs_with_py, nodes, edge_names).values()
+        for e in _compute_entry_files(dirs_with_py, nodes, edge_names).values()
         if e.files >= 5 and e.directory not in wrapper_dirs
     ]
     entries.sort(key=lambda e: (-e.share, -e.outside_importers, str(e.directory)))
@@ -514,7 +516,7 @@ def render_metrics(
     lines.append("## Misplaced files")
     lines.append("")
     misplaced = sorted(
-        compute_misplaced(nodes, adj, radj),
+        _compute_misplaced(nodes, adj, radj),
         key=lambda m: (-(m.other - m.own), str(m.path)),
     )
     lines.append(f"{len(misplaced)} of {n} files misplaced.")

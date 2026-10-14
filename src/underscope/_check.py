@@ -10,7 +10,7 @@ from underscope._cycles import CycleFinding
 from underscope._resolve import EdgeNames, is_private_name, module_comp, should_skip_dir
 
 
-def has_project_table(pyproject: Path) -> bool:
+def _has_project_table(pyproject: Path) -> bool:
     try:
         with pyproject.open("rb") as f:
             data = tomllib.load(f)
@@ -26,24 +26,24 @@ def find_package_roots(repo: Path) -> list[Path]:
     roots: list[Path] = []
     for dirpath, dirnames, filenames in os.walk(repo):
         dirnames[:] = [d for d in dirnames if not should_skip_dir(d)]
-        if "pyproject.toml" in filenames and has_project_table(
+        if "pyproject.toml" in filenames and _has_project_table(
             Path(dirpath) / "pyproject.toml"
         ):
             roots.append(Path(dirpath).relative_to(repo))
     return sorted(roots, key=lambda p: len(p.parts), reverse=True)
 
 
-def owning_package_root(rel: Path, package_roots: list[Path]) -> Path:
+def _owning_package_root(rel: Path, package_roots: list[Path]) -> Path:
     for root in package_roots:
         if root != Path(".") and rel.is_relative_to(root):
             return root
     return Path(".")
 
 
-def private_owner_dir(rel: Path, package_roots: list[Path]) -> Path | None:
+def _private_owner_dir(rel: Path, package_roots: list[Path]) -> Path | None:
     """The directory a private file/dir component makes it private to, or
     None if no component of rel (relative to its package root) is private."""
-    root = owning_package_root(rel, package_roots)
+    root = _owning_package_root(rel, package_roots)
     sub = rel.relative_to(root) if root != Path(".") else rel
     comp = module_comp(sub.parts)
     for k, part in enumerate(comp):
@@ -53,7 +53,7 @@ def private_owner_dir(rel: Path, package_roots: list[Path]) -> Path | None:
 
 
 @dataclass(frozen=True, slots=True)
-class PrivacyViolation:
+class _PrivacyViolation:
     """An import that reaches a module private to a directory it is not
     under."""
 
@@ -64,26 +64,26 @@ class PrivacyViolation:
 
 def find_privacy_violations(
     edge_names: EdgeNames, package_roots: list[Path]
-) -> list[PrivacyViolation]:
-    violations: list[PrivacyViolation] = []
+) -> list[_PrivacyViolation]:
+    violations: list[_PrivacyViolation] = []
     owner_cache: dict[Path, Path | None] = {}
 
     def owner_of(rel: Path) -> Path | None:
         if rel not in owner_cache:
-            owner_cache[rel] = private_owner_dir(rel, package_roots)
+            owner_cache[rel] = _private_owner_dir(rel, package_roots)
         return owner_cache[rel]
 
     for importer_rel, target_rel in edge_names:
         owner = owner_of(target_rel)
         if owner is None or importer_rel.is_relative_to(owner):
             continue
-        violations.append(PrivacyViolation(importer_rel, target_rel, owner))
+        violations.append(_PrivacyViolation(importer_rel, target_rel, owner))
 
     violations.sort(key=lambda v: (str(v.importer), str(v.target)))
     return violations
 
 
-def name_owner(target_rel: Path) -> tuple[Path, bool]:
+def _name_owner(target_rel: Path) -> tuple[Path, bool]:
     """Where a name imported `from target_rel import _x` is private to:
     (owner, owner_is_dir). A package (`__init__.py` file, or a namespace
     package directory with no `__init__.py`) makes its names visible to
@@ -97,7 +97,7 @@ def name_owner(target_rel: Path) -> tuple[Path, bool]:
 
 
 @dataclass(frozen=True, slots=True)
-class NameViolation:
+class _NameViolation:
     """An import of a private name (`from m import _x`) that reaches
     outside the directory (package) or file that name is private to."""
 
@@ -108,17 +108,17 @@ class NameViolation:
     owner_is_dir: bool
 
 
-def find_name_violations(edge_names: EdgeNames) -> list[NameViolation]:
-    violations: list[NameViolation] = []
+def find_name_violations(edge_names: EdgeNames) -> list[_NameViolation]:
+    violations: list[_NameViolation] = []
     for (importer_rel, target_rel), names in edge_names.items():
         for name in names:
             if not is_private_name(name):
                 continue
-            owner, owner_is_dir = name_owner(target_rel)
+            owner, owner_is_dir = _name_owner(target_rel)
             if owner_is_dir and importer_rel.is_relative_to(owner):
                 continue
             violations.append(
-                NameViolation(importer_rel, target_rel, name, owner, owner_is_dir)
+                _NameViolation(importer_rel, target_rel, name, owner, owner_is_dir)
             )
     violations.sort(key=lambda v: (str(v.importer), str(v.target), v.name))
     return violations
@@ -127,8 +127,8 @@ def find_name_violations(edge_names: EdgeNames) -> list[NameViolation]:
 def print_check_findings(
     cycle_findings: list[CycleFinding],
     distinct_file_cycles: int,
-    privacy_violations: list[PrivacyViolation],
-    name_violations: list[NameViolation],
+    privacy_violations: list[_PrivacyViolation],
+    name_violations: list[_NameViolation],
 ) -> bool:
     """Prints findings, returns True if any finding exists."""
     any_finding = (

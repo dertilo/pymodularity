@@ -12,7 +12,7 @@ PairKey = tuple[Path, Path]
 PairEdges = dict[PairKey, set[EdgeKey]]
 
 
-def lca(a: Path, b: Path) -> Path:
+def _lca(a: Path, b: Path) -> Path:
     pa = () if a == Path(".") else a.parts
     pb = () if b == Path(".") else b.parts
     common: list[str] = []
@@ -23,7 +23,7 @@ def lca(a: Path, b: Path) -> Path:
     return Path(*common) if common else Path(".")
 
 
-def child_of(directory: Path, path: Path) -> Path | None:
+def _child_of(directory: Path, path: Path) -> Path | None:
     if path == directory:
         return None
     if directory == Path("."):
@@ -32,8 +32,8 @@ def child_of(directory: Path, path: Path) -> Path | None:
     return directory / rel.parts[0]
 
 
-def outside_node(directory: Path, path: Path) -> Path | None:
-    return child_of(lca(directory, path), path)
+def _outside_node(directory: Path, path: Path) -> Path | None:
+    return _child_of(_lca(directory, path), path)
 
 
 def build_view(directory: Path, edge_names: EdgeNames) -> PairEdges:
@@ -45,14 +45,14 @@ def build_view(directory: Path, edge_names: EdgeNames) -> PairEdges:
         if not f_in and not t_in:
             continue
         if f_in and t_in:
-            src = child_of(directory, f_rel)
-            tgt = child_of(directory, t_rel)
+            src = _child_of(directory, f_rel)
+            tgt = _child_of(directory, t_rel)
         elif f_in:
-            src = child_of(directory, f_rel)
-            tgt = outside_node(directory, t_rel)
+            src = _child_of(directory, f_rel)
+            tgt = _outside_node(directory, t_rel)
         else:
-            src = outside_node(directory, f_rel)
-            tgt = child_of(directory, t_rel)
+            src = _outside_node(directory, f_rel)
+            tgt = _child_of(directory, t_rel)
         if src is None or tgt is None or src == tgt:
             continue
         pair_edges.setdefault((src, tgt), set()).add((f_rel, t_rel))

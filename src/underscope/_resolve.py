@@ -1,7 +1,7 @@
 """File discovery, import resolution and file-level edge collection: build
 the whole-repo Python import graph with ast (stdlib only), plus the
-`build_file_graph`/`build_graph` entry points every subcommand calls.
-Shared types produced by resolution (PathParts, EdgeNames, ...) live
+`_build_file_graph`/`build_graph` entry points every subcommand calls.
+Shared types produced by resolution (_PathParts, EdgeNames, ...) live
 here too."""
 
 import ast
@@ -11,11 +11,11 @@ from dataclasses import dataclass
 from pathlib import Path
 
 # dotted module path components, e.g. ("shop", "billing", "pricing")
-PathParts = tuple[str, ...]
+_PathParts = tuple[str, ...]
 
 
 @dataclass(frozen=True, slots=True)
-class ModuleCandidate:
+class _ModuleCandidate:
     """A resolvable module: its file/dir path, and whether it's a namespace
     package directory (True) or a single .py file / __init__.py (False)."""
 
@@ -23,40 +23,40 @@ class ModuleCandidate:
     is_namespace_dir: bool
 
 
-ModuleCandidates = dict[PathParts, ModuleCandidate]
+_ModuleCandidates = dict[_PathParts, _ModuleCandidate]
 
 
 @dataclass(frozen=True, slots=True)
-class SuffixEntry:
+class _SuffixEntry:
     """A module candidate indexed by dotted suffix."""
 
-    comp: PathParts
+    comp: _PathParts
     path: Path
     is_namespace_dir: bool
 
 
-SuffixIndex = dict[PathParts, list[SuffixEntry]]
+_SuffixIndex = dict[_PathParts, list[_SuffixEntry]]
 # an ambiguous-import warning: the importing file and its candidate targets
-AmbiguityWarning = tuple[Path, list[Path]]
+_AmbiguityWarning = tuple[Path, list[Path]]
 # (importer_rel, target_rel) file-level import edge
 EdgeKey = tuple[Path, Path]
 EdgeNames = dict[EdgeKey, set[str]]
 # a resolved absolute/relative import: target file, imported names (if any)
-ResolvedImport = tuple[Path, frozenset[str]]
+_ResolvedImport = tuple[Path, frozenset[str]]
 
 
 @dataclass(frozen=True, slots=True)
-class ScoredCandidate:
+class _ScoredCandidate:
     """A module candidate scored for disambiguation against the importer."""
 
     root_depth: int
     is_ancestor: bool
     path: Path
-    root: PathParts
+    root: _PathParts
     is_namespace_dir: bool
 
 
-SKIP_DIRS = {
+_SKIP_DIRS = {
     ".git",
     ".venv",
     "venv",
@@ -70,32 +70,32 @@ SKIP_DIRS = {
 
 
 def should_skip_dir(name: str) -> bool:
-    return name in SKIP_DIRS or name.startswith(".")
+    return name in _SKIP_DIRS or name.startswith(".")
 
 
-def is_test_file(name: str) -> bool:
+def _is_test_file(name: str) -> bool:
     return name == "conftest.py" or name.startswith("test_") or name.endswith("_test.py")
 
 
-def find_py_files(repo: Path) -> list[Path]:
+def _find_py_files(repo: Path) -> list[Path]:
     files: list[Path] = []
     for dirpath, dirnames, filenames in os.walk(repo):
         dirnames[:] = [d for d in dirnames if not should_skip_dir(d)]
         for fn in filenames:
-            if fn.endswith(".py") and not is_test_file(fn):
+            if fn.endswith(".py") and not _is_test_file(fn):
                 files.append(Path(dirpath) / fn)
     return files
 
 
-def module_comp(parts: tuple[str, ...]) -> PathParts:
+def module_comp(parts: tuple[str, ...]) -> _PathParts:
     if parts[-1] == "__init__.py":
         return parts[:-1]
     return parts[:-1] + (parts[-1][:-3],)
 
 
-def build_index(
+def _build_index(
     repo: Path, py_files: list[Path]
-) -> tuple[set[Path], ModuleCandidates, SuffixIndex]:
+) -> tuple[set[Path], _ModuleCandidates, _SuffixIndex]:
     dirs_with_py: set[Path] = set()
     for f in py_files:
         d = f.relative_to(repo).parent
@@ -105,53 +105,53 @@ def build_index(
                 break
             d = d.parent
 
-    module_candidates: ModuleCandidates = {}
+    module_candidates: _ModuleCandidates = {}
     for f in py_files:
         rel = f.relative_to(repo)
         comp = module_comp(rel.parts)
-        module_candidates[comp] = ModuleCandidate(f, False)
+        module_candidates[comp] = _ModuleCandidate(f, False)
 
     for d in dirs_with_py:
         comp = () if d == Path(".") else d.parts
         if comp not in module_candidates:
-            module_candidates[comp] = ModuleCandidate(
+            module_candidates[comp] = _ModuleCandidate(
                 repo / d if d != Path(".") else repo, True
             )
 
-    suffix_index: SuffixIndex = {}
+    suffix_index: _SuffixIndex = {}
     for comp, cand in module_candidates.items():
         for k in range(1, len(comp) + 1):
             suf = comp[-k:]
             suffix_index.setdefault(suf, []).append(
-                SuffixEntry(comp, cand.path, cand.is_namespace_dir)
+                _SuffixEntry(comp, cand.path, cand.is_namespace_dir)
             )
 
     return dirs_with_py, module_candidates, suffix_index
 
 
-def path_components(p: Path) -> PathParts:
+def _path_components(p: Path) -> _PathParts:
     return () if p == Path(".") else p.parts
 
 
-def disambiguate(
-    cands: list[SuffixEntry],
-    importer_dir_parts: PathParts,
-    suf: PathParts,
+def _disambiguate(
+    cands: list[_SuffixEntry],
+    importer_dir_parts: _PathParts,
+    suf: _PathParts,
     importer_rel: Path,
-    warnings: list[AmbiguityWarning],
-    module_candidates: ModuleCandidates,
+    warnings: list[_AmbiguityWarning],
+    module_candidates: _ModuleCandidates,
 ) -> Path | None:
-    uniq: dict[tuple[PathParts, Path], bool] = {}
+    uniq: dict[tuple[_PathParts, Path], bool] = {}
     for entry in cands:
         uniq[(entry.comp, entry.path)] = entry.is_namespace_dir
-    entries = [SuffixEntry(comp, path, isd) for (comp, path), isd in uniq.items()]
+    entries = [_SuffixEntry(comp, path, isd) for (comp, path), isd in uniq.items()]
 
-    scored: list[ScoredCandidate] = []
+    scored: list[_ScoredCandidate] = []
     for entry in entries:
         root = entry.comp[: len(entry.comp) - len(suf)]
         is_ancestor = root == importer_dir_parts[: len(root)]
         scored.append(
-            ScoredCandidate(
+            _ScoredCandidate(
                 len(root), is_ancestor, entry.path, root, entry.is_namespace_dir
             )
         )
@@ -167,7 +167,7 @@ def disambiguate(
     # top-level name from another project. This filter only applies to
     # single-file candidates (x.py); package candidates (x/__init__.py or a
     # namespace dir x/) skip it.
-    def is_package(root: PathParts) -> bool:
+    def is_package(root: _PathParts) -> bool:
         cand = module_candidates.get(root)
         return (
             cand is not None
@@ -195,13 +195,13 @@ def disambiguate(
     return None
 
 
-def resolve_exact(
+def _resolve_exact(
     dotted_parts: list[str],
-    importer_dir_parts: PathParts,
-    suffix_index: SuffixIndex,
+    importer_dir_parts: _PathParts,
+    suffix_index: _SuffixIndex,
     importer_rel: Path,
-    warnings: list[AmbiguityWarning],
-    module_candidates: ModuleCandidates,
+    warnings: list[_AmbiguityWarning],
+    module_candidates: _ModuleCandidates,
 ) -> Path | None:
     if not dotted_parts or dotted_parts[0] in sys.stdlib_module_names:
         return None
@@ -209,7 +209,7 @@ def resolve_exact(
     cands = suffix_index.get(suf)
     if not cands:
         return None
-    return disambiguate(
+    return _disambiguate(
         cands,
         importer_dir_parts,
         suf,
@@ -219,13 +219,13 @@ def resolve_exact(
     )
 
 
-def resolve_relative(
+def _resolve_relative(
     module: str | None,
     level: int,
     names: list[ast.alias],
-    importer_dir_parts: PathParts,
-    module_candidates: ModuleCandidates,
-) -> list[ResolvedImport]:
+    importer_dir_parts: _PathParts,
+    module_candidates: _ModuleCandidates,
+) -> list[_ResolvedImport]:
     drop = level - 1
     if drop > len(importer_dir_parts):
         return []
@@ -235,7 +235,7 @@ def resolve_relative(
         else importer_dir_parts
     )
 
-    results: list[ResolvedImport] = []
+    results: list[_ResolvedImport] = []
     if module:
         comp = target_dir + tuple(module.split("."))
         cand = module_candidates.get(comp)
@@ -251,7 +251,7 @@ def resolve_relative(
     return results
 
 
-def top_level_defined_names(tree: ast.Module) -> set[str]:
+def _top_level_defined_names(tree: ast.Module) -> set[str]:
     """Names this module defines at top level: def, async def, class, and
     plain or annotated assignment to a bare name. Imports don't count."""
     defined: set[str] = set()
@@ -267,17 +267,17 @@ def top_level_defined_names(tree: ast.Module) -> set[str]:
     return defined
 
 
-def collect_edges(
+def _collect_edges(
     repo: Path,
     py_files: list[Path],
-    module_candidates: ModuleCandidates,
-    suffix_index: SuffixIndex,
-) -> tuple[EdgeNames, list[AmbiguityWarning], dict[Path, set[str]]]:
+    module_candidates: _ModuleCandidates,
+    suffix_index: _SuffixIndex,
+) -> tuple[EdgeNames, list[_AmbiguityWarning], dict[Path, set[str]]]:
     # (importer_rel, target_rel) -> set of imported names (empty = no names,
     # e.g. a plain "import x.y" or a "from a import b" where b is itself the
     # resolved submodule rather than a name defined inside it)
     edge_names: EdgeNames = {}
-    warnings: list[AmbiguityWarning] = []
+    warnings: list[_AmbiguityWarning] = []
     defined_names: dict[Path, set[str]] = {}
     for f in sorted(py_files):
         rel = f.relative_to(repo)
@@ -288,14 +288,14 @@ def collect_edges(
             print(f"warning: skipping {rel}: {e}", file=sys.stderr)
             continue
 
-        defined_names[rel] = top_level_defined_names(tree)
-        importer_dir_parts = path_components(rel.parent)
-        targets: list[ResolvedImport] = []
+        defined_names[rel] = _top_level_defined_names(tree)
+        importer_dir_parts = _path_components(rel.parent)
+        targets: list[_ResolvedImport] = []
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
                 for alias in node.names:
                     dotted = alias.name.split(".")
-                    t = resolve_exact(
+                    t = _resolve_exact(
                         dotted,
                         importer_dir_parts,
                         suffix_index,
@@ -308,7 +308,7 @@ def collect_edges(
             elif isinstance(node, ast.ImportFrom):
                 if node.level and node.level > 0:
                     targets.extend(
-                        resolve_relative(
+                        _resolve_relative(
                             node.module,
                             node.level,
                             node.names,
@@ -319,7 +319,7 @@ def collect_edges(
                 else:
                     module_parts = node.module.split(".") if node.module else []
                     for alias in node.names:
-                        t = resolve_exact(
+                        t = _resolve_exact(
                             module_parts + [alias.name],
                             importer_dir_parts,
                             suffix_index,
@@ -330,7 +330,7 @@ def collect_edges(
                         if t is not None:
                             targets.append((t, frozenset()))
                             continue
-                        t = resolve_exact(
+                        t = _resolve_exact(
                             module_parts,
                             importer_dir_parts,
                             suffix_index,
@@ -357,11 +357,11 @@ def is_private_name(name: str) -> bool:
     return name.startswith("_") and not name.startswith("__") and name != "_"
 
 
-def build_file_graph(
+def _build_file_graph(
     nodes: set[Path], edge_names: EdgeNames
 ) -> tuple[dict[Path, set[Path]], dict[Path, set[Path]]]:
     """The raw file-level import graph (forward adjacency and its reverse),
-    same edges `check`'s cycle rule uses: no self-edges (collect_edges
+    same edges `check`'s cycle rule uses: no self-edges (_collect_edges
     already drops those), duplicates already collapsed by edge_names'
     dict keys."""
     adj: dict[Path, set[Path]] = {n: set() for n in nodes}
@@ -374,7 +374,7 @@ def build_file_graph(
 
 
 @dataclass(frozen=True, slots=True)
-class RepoGraph:
+class _RepoGraph:
     """Every structure every subcommand needs, built once from one parse of
     `repo`: the file list, the directories holding Python code, the
     file-level import edges (and their imported names), each file's
@@ -388,15 +388,15 @@ class RepoGraph:
     radj: dict[Path, set[Path]]
 
 
-def build_graph(repo: Path) -> RepoGraph:
+def build_graph(repo: Path) -> _RepoGraph:
     """Parses `repo` once and builds every structure every subcommand needs.
     Prints ambiguous-import warnings to stderr along the way. Reach and
     file/directory scores are not computed here -- `check` never uses
     them, so `graph` and `metrics` compute them in their own run_*
     path."""
-    py_files = find_py_files(repo)
-    dirs_with_py, module_candidates, suffix_index = build_index(repo, py_files)
-    edge_names, warnings, defined_names = collect_edges(
+    py_files = _find_py_files(repo)
+    dirs_with_py, module_candidates, suffix_index = _build_index(repo, py_files)
+    edge_names, warnings, defined_names = _collect_edges(
         repo, py_files, module_candidates, suffix_index
     )
 
@@ -408,6 +408,6 @@ def build_graph(repo: Path) -> RepoGraph:
         )
 
     nodes = {f.relative_to(repo) for f in py_files}
-    adj, radj = build_file_graph(nodes, edge_names)
+    adj, radj = _build_file_graph(nodes, edge_names)
 
-    return RepoGraph(py_files, dirs_with_py, edge_names, defined_names, adj, radj)
+    return _RepoGraph(py_files, dirs_with_py, edge_names, defined_names, adj, radj)
