@@ -91,6 +91,25 @@ def test_private_module_violation_across_sibling_package(tmp_path: Path) -> None
     assert "a/b/deep/ok2.py ->" not in result.stdout
 
 
+def test_nested_private_dir_innermost_part_wins(tmp_path: Path) -> None:
+    """`_a/_b.py` has two private path parts, `_a` and `_b`. The narrowest
+    (innermost) one wins: only files under `_a/` may import it, not the
+    whole package. Catches an implementation that stops at the first
+    (outermost) private part and treats the module as visible package-wide
+    just because its containing directory is already private."""
+    write(tmp_path / "pyproject.toml", '[project]\nname = "fix"\nversion = "0"\n')
+    write(tmp_path / "_a/__init__.py", "")
+    write(tmp_path / "_a/_b.py", "x = 1\n")
+    write(tmp_path / "_a/ok.py", "from _a._b import x\n")
+    write(tmp_path / "use.py", "from _a._b import x\n")
+
+    result = run_check(tmp_path)
+
+    assert result.returncode == 1
+    assert "use.py -> _a/_b.py" in result.stdout
+    assert "_a/ok.py ->" not in result.stdout
+
+
 def test_private_name_fixture_tree(tmp_path: Path) -> None:
     """Rust-style private-name visibility, per a fixture tree:
     `a/__init__.py` defines `_x`, `a/b/__init__.py` defines `_y`,

@@ -44,13 +44,14 @@ def _owning_package_root(rel: Path, package_roots: Sequence[Path]) -> Path:
 
 def _visibility_scope(rel: Path, package_roots: Sequence[Path]) -> Path:
     """The directory whose subtree may import rel: the private owner of its
-    first private file/dir component, or the repo root (everyone) if rel has
-    no private component (relative to its package root)."""
+    innermost private file/dir component, or the repo root (everyone) if rel
+    has no private component (relative to its package root). Several private
+    parts each restrict; the narrowest (innermost) one wins."""
     root = _owning_package_root(rel, package_roots)
     sub = rel.relative_to(root) if root != Path(".") else rel
     comp = module_comp(sub.parts)
-    for k, part in enumerate(comp):
-        if is_private_name(part):
+    for k in range(len(comp) - 1, -1, -1):
+        if is_private_name(comp[k]):
             return root / Path(*comp[:k]) if comp[:k] else root
     return Path(".")
 
