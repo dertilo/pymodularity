@@ -3,13 +3,14 @@ one directory's view (its inside children plus the outside nodes they
 touch), and the inside/outside node split every view-level consumer
 shares."""
 
+from collections.abc import Mapping
 from pathlib import Path
 
 from underscope._graph import EdgeKey, EdgeNames
 
 # (view node src, view node tgt)
 PairKey = tuple[Path, Path]
-PairEdges = dict[PairKey, set[EdgeKey]]
+PairEdges = Mapping[PairKey, frozenset[EdgeKey]]
 
 
 def _lca(a: Path, b: Path) -> Path:
@@ -36,7 +37,7 @@ def _outside_node(directory: Path, path: Path) -> Path:
 
 def build_view(directory: Path, edge_names: EdgeNames) -> PairEdges:
     # (node_src, node_tgt) -> set of (importer_rel, target_rel) file-level edges
-    pair_edges: PairEdges = {}
+    pair_edges: dict[PairKey, set[EdgeKey]] = {}
     for f_rel, t_rel in edge_names:
         f_in = f_rel.is_relative_to(directory)
         t_in = t_rel.is_relative_to(directory)
@@ -58,7 +59,7 @@ def build_view(directory: Path, edge_names: EdgeNames) -> PairEdges:
         if src == tgt:
             continue
         pair_edges.setdefault((src, tgt), set()).add((f_rel, t_rel))
-    return pair_edges
+    return {key: frozenset(edges) for key, edges in pair_edges.items()}
 
 
 def compute_inside_nodes(directory: Path, pair_edges: PairEdges) -> frozenset[Path]:
