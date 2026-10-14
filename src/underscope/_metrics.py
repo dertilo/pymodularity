@@ -73,6 +73,20 @@ def compute_file_scores(
     return scores
 
 
+def compute_scores(
+    dirs_with_py: set[Path],
+    adj: dict[Path, set[Path]],
+    radj: dict[Path, set[Path]],
+) -> tuple[dict[Path, FileScore], dict[Path, DirScore]]:
+    """`graph` and `metrics`'s shared first step: reach, then file and
+    directory scores from it."""
+    nodes = set(adj)
+    dependents, dependencies = compute_reach(nodes, adj, radj)
+    file_scores = compute_file_scores(nodes, dependents, dependencies)
+    dir_scores = compute_dir_scores(dirs_with_py, dependents, dependencies)
+    return file_scores, dir_scores
+
+
 def ancestor_dirs(rel: Path) -> list[Path]:
     """The directory holding `rel` and every ancestor directory up to the
     repo root ('.'), inclusive."""
@@ -336,8 +350,6 @@ def compute_misplaced(
 
 
 def render_metrics(
-    repo: Path,
-    py_files: list[Path],
     dirs_with_py: set[Path],
     edge_names: EdgeNames,
     file_scores: dict[Path, FileScore],
@@ -346,7 +358,7 @@ def render_metrics(
     adj: dict[Path, set[Path]],
     radj: dict[Path, set[Path]],
 ) -> list[str]:
-    nodes = {f.relative_to(repo) for f in py_files}
+    nodes = set(adj)
     n = len(nodes)
     dependents = {p: fs.dependents for p, fs in file_scores.items()}
     dependencies = {p: fs.dependencies for p, fs in file_scores.items()}

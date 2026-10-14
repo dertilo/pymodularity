@@ -1,11 +1,13 @@
-"""Tarjan SCC and per-directory import-cycle finding, on the directory
-"view" edges `_resolve.build_view` produces."""
+"""Tarjan SCC, on the directory view edges `_view_edges.build_view`
+produces (feeding both `check`'s cycle ban and the Cycles section of
+`graph`'s views), and the file-level cycle count on the raw file graph."""
 
 import itertools
 from dataclasses import dataclass
 from pathlib import Path
 
-from underscope._resolve import EdgeKey, EdgeNames, PairEdges
+from underscope._resolve import EdgeKey, EdgeNames
+from underscope._view_edges import PairEdges, build_view, compute_inside_nodes
 
 
 @dataclass(frozen=True, slots=True)
@@ -179,15 +181,6 @@ def example_file_edges(
     return out
 
 
-def compute_inside_nodes(directory: Path, pair_edges: PairEdges) -> set[Path]:
-    nodes: set[Path] = set()
-    for src, tgt in pair_edges:
-        nodes.add(src)
-        nodes.add(tgt)
-    outside = {n for n in nodes if not n.is_relative_to(directory)}
-    return nodes - outside
-
-
 @dataclass(frozen=True, slots=True)
 class CycleFinding:
     """One SCC (size >= 2) found in one directory's view, with a concrete
@@ -213,15 +206,21 @@ def find_cycle_findings(
     return findings
 
 
-def count_file_level_cycles(
-    py_files: list[Path], repo: Path, edge_names: EdgeNames
-) -> int:
+def count_file_level_cycles(adj: dict[Path, set[Path]]) -> int:
     """Distinct cycles on the raw file-level graph, ignoring any directory
     view's aggregation -- the number of genuinely separate root causes."""
-    nodes = {f.relative_to(repo) for f in py_files}
-    adj: dict[Path, set[Path]] = {n: set() for n in nodes}
-    for f_rel, t_rel in edge_names:
-        if f_rel in adj and t_rel in adj:
-            adj[f_rel].add(t_rel)
-    sccs = tarjan_sccs(nodes, adj)
+    sccs = tarjan_sccs(set(adj), adj)
     return sum(1 for comp in sccs if len(comp) >= 2)
+
+
+def find_all_cycle_findings(
+    dirs_with_py: set[Path], edge_names: EdgeNames
+) -> list[CycleFinding]:
+    """The cycle ban `check` enforces: every directory's view, scanned for
+    SCCs (size >= 2) among its inside children."""
+    findings: list[CycleFinding] = []
+    for directory in sorted(dirs_with_py, key=str):
+        pair_edges = build_view(directory, edge_names)
+        inside_nodes = compute_inside_nodes(directory, pair_edges)
+        findings.extend(find_cycle_findings(directory, inside_nodes, pair_edges))
+    return findings

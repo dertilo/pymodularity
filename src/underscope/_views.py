@@ -10,7 +10,11 @@ from pathlib import Path
 
 from underscope._cycles import compute_sccs
 from underscope._metrics import DirScore, FileScore
-from underscope._resolve import EdgeKey, EdgeNames, Link, PairEdges, PairKey
+from underscope._resolve import EdgeKey, EdgeNames, is_private_name
+from underscope._view_edges import PairEdges, PairKey, compute_inside_nodes
+
+# (link text, relative link target) for the markdown "Links:" list
+Link = tuple[str, str]
 
 
 def mermaid_id(path: Path) -> str:
@@ -68,7 +72,7 @@ def compute_node_rows(
                 for name in edge_names.get((f_rel, t_rel), ()):
                     distinct_target_names.add((t_rel, name))
                     name_units.setdefault(name, set()).add(src)
-                    if name.startswith("_") and not name.startswith("__"):
+                    if is_private_name(name):
                         private += 1
 
         top_names = sorted(name_units.items(), key=lambda kv: (-len(kv[1]), kv[0]))[:5]
@@ -343,12 +347,8 @@ def write_view(
         nodes.add(tgt)
 
     ids = {n: mermaid_id(n) for n in nodes}
-    outside_nodes: set[Path] = set()
-    for src, tgt in pair_edges:
-        if not src.is_relative_to(directory):
-            outside_nodes.add(src)
-        if not tgt.is_relative_to(directory):
-            outside_nodes.add(tgt)
+    inside_nodes = compute_inside_nodes(directory, pair_edges)
+    outside_nodes = nodes - inside_nodes
 
     def label(n: Path) -> str:
         return str(n) if n in outside_nodes else n.name
@@ -367,7 +367,6 @@ def write_view(
         lines.append(f"[parent view]({rel_link})")
         lines.append("")
 
-    inside_nodes = nodes - outside_nodes
     lines.extend(
         render_summary(
             repo,

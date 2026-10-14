@@ -1,5 +1,5 @@
-"""The privacy rule and cycle ban that `underscope check` enforces, and
-their printing."""
+"""The privacy rules `underscope check` enforces (the cycle ban itself
+lives in `_cycles`), and the printing of all check findings."""
 
 import os
 import tomllib
@@ -7,11 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from underscope._cycles import CycleFinding
-from underscope._resolve import EdgeNames, module_comp, should_skip_dir
-
-
-def is_private_part(name: str) -> bool:
-    return name.startswith("_") and not name.startswith("__")
+from underscope._resolve import EdgeNames, is_private_name, module_comp, should_skip_dir
 
 
 def has_project_table(pyproject: Path) -> bool:
@@ -51,7 +47,7 @@ def private_owner_dir(rel: Path, package_roots: list[Path]) -> Path | None:
     sub = rel.relative_to(root) if root != Path(".") else rel
     comp = module_comp(sub.parts)
     for k, part in enumerate(comp):
-        if is_private_part(part):
+        if is_private_name(part):
             return root / Path(*comp[:k]) if comp[:k] else root
     return None
 
@@ -85,13 +81,6 @@ def find_privacy_violations(
 
     violations.sort(key=lambda v: (str(v.importer), str(v.target)))
     return violations
-
-
-def is_private_name(name: str) -> bool:
-    """A name private by Rust's convention, ported to PEP 8 underscores:
-    one leading underscore, not a dunder, not the bare `_` placeholder
-    name."""
-    return name.startswith("_") and not name.startswith("__") and name != "_"
 
 
 def name_owner(target_rel: Path) -> tuple[Path, bool]:

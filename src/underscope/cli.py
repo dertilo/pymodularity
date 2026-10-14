@@ -70,19 +70,10 @@ from underscope._check import (
     find_privacy_violations,
     print_check_findings,
 )
-from underscope._cycles import (
-    CycleFinding,
-    compute_inside_nodes,
-    count_file_level_cycles,
-    find_cycle_findings,
-)
-from underscope._metrics import (
-    compute_dir_scores,
-    compute_file_scores,
-    compute_reach,
-    render_metrics,
-)
-from underscope._resolve import build_graph, build_view
+from underscope._cycles import count_file_level_cycles, find_all_cycle_findings
+from underscope._metrics import compute_scores, render_metrics
+from underscope._resolve import build_graph
+from underscope._view_edges import build_view
 from underscope._views import write_view
 
 __version__ = "0.1.0"
@@ -108,18 +99,14 @@ def run_check(repo: Path) -> int:
     """`underscope check <repo>`: the import-cycle and privacy-convention
     checks, findings printed to stdout, exit 1 on any finding, no views
     written."""
-    py_files, dirs_with_py, edge_names, _, _, _ = build_graph(repo)
+    graph = build_graph(repo)
 
-    cycle_findings: list[CycleFinding] = []
-    for directory in sorted(dirs_with_py, key=str):
-        pair_edges = build_view(directory, edge_names)
-        inside_nodes = compute_inside_nodes(directory, pair_edges)
-        cycle_findings.extend(find_cycle_findings(directory, inside_nodes, pair_edges))
+    cycle_findings = find_all_cycle_findings(graph.dirs_with_py, graph.edge_names)
 
     package_roots = find_package_roots(repo)
-    privacy_violations = find_privacy_violations(edge_names, package_roots)
-    name_violations = find_name_violations(edge_names)
-    distinct_file_cycles = count_file_level_cycles(py_files, repo, edge_names)
+    privacy_violations = find_privacy_violations(graph.edge_names, package_roots)
+    name_violations = find_name_violations(graph.edge_names)
+    distinct_file_cycles = count_file_level_cycles(graph.adj)
     any_finding = print_check_findings(
         cycle_findings, distinct_file_cycles, privacy_violations, name_violations
     )
@@ -130,22 +117,19 @@ def run_graph(repo: Path, out_dir: Path, write_html: bool) -> int:
     """`underscope graph <repo> --out DIR [--html]`: writes one mermaid
     view per directory under DIR."""
     out_dir.mkdir(parents=True, exist_ok=True)
-    _, dirs_with_py, edge_names, _, adj, radj = build_graph(repo)
-    nodes = set(adj)
-    dependents, dependencies = compute_reach(nodes, adj, radj)
-    file_scores = compute_file_scores(nodes, dependents, dependencies)
-    dir_scores = compute_dir_scores(dirs_with_py, dependents, dependencies)
+    graph = build_graph(repo)
+    file_scores, dir_scores = compute_scores(graph.dirs_with_py, graph.adj, graph.radj)
 
     written = 0
-    for directory in sorted(dirs_with_py, key=str):
-        pair_edges = build_view(directory, edge_names)
+    for directory in sorted(graph.dirs_with_py, key=str):
+        pair_edges = build_view(directory, graph.edge_names)
         write_view(
             out_dir,
             repo,
             directory,
-            dirs_with_py,
+            graph.dirs_with_py,
             pair_edges,
-            edge_names,
+            graph.edge_names,
             write_html,
             file_scores,
             dir_scores,
@@ -159,24 +143,19 @@ def run_graph(repo: Path, out_dir: Path, write_html: bool) -> int:
 def run_metrics(repo: Path) -> int:
     """`underscope metrics <repo>`: prints a coupling report to stdout,
     always exits 0."""
-    py_files, dirs_with_py, edge_names, defined_names, adj, radj = build_graph(repo)
-    nodes = set(adj)
-    dependents, dependencies = compute_reach(nodes, adj, radj)
-    file_scores = compute_file_scores(nodes, dependents, dependencies)
-    dir_scores = compute_dir_scores(dirs_with_py, dependents, dependencies)
+    graph = build_graph(repo)
+    file_scores, dir_scores = compute_scores(graph.dirs_with_py, graph.adj, graph.radj)
 
     print(
         "\n".join(
             render_metrics(
-                repo,
-                py_files,
-                dirs_with_py,
-                edge_names,
+                graph.dirs_with_py,
+                graph.edge_names,
                 file_scores,
                 dir_scores,
-                defined_names,
-                adj,
-                radj,
+                graph.defined_names,
+                graph.adj,
+                graph.radj,
             )
         )
     )

@@ -1,6 +1,7 @@
 """File discovery, import resolution and file-level edge collection: build
-the whole-repo Python import graph with ast (stdlib only). Shared types
-(PathParts, EdgeNames, PairEdges, ...) used by every other module live
+the whole-repo Python import graph with ast (stdlib only), plus the
+`build_file_graph`/`build_graph` entry points every subcommand calls.
+Shared types produced by resolution (PathParts, EdgeNames, ...) live
 here too."""
 
 import ast
@@ -42,11 +43,6 @@ EdgeKey = tuple[Path, Path]
 EdgeNames = dict[EdgeKey, set[str]]
 # a resolved absolute/relative import: target file, imported names (if any)
 ResolvedImport = tuple[Path, frozenset[str]]
-# (view node src, view node tgt)
-PairKey = tuple[Path, Path]
-PairEdges = dict[PairKey, set[EdgeKey]]
-# (link text, relative link target) for the markdown "Links:" list
-Link = tuple[str, str]
 
 
 @dataclass(frozen=True, slots=True)
@@ -354,51 +350,11 @@ def collect_edges(
     return edge_names, warnings, defined_names
 
 
-def lca(a: Path, b: Path) -> Path:
-    pa = () if a == Path(".") else a.parts
-    pb = () if b == Path(".") else b.parts
-    common: list[str] = []
-    for x, y in zip(pa, pb):
-        if x != y:
-            break
-        common.append(x)
-    return Path(*common) if common else Path(".")
-
-
-def child_of(directory: Path, path: Path) -> Path | None:
-    if path == directory:
-        return None
-    if directory == Path("."):
-        return Path(path.parts[0])
-    rel = path.relative_to(directory)
-    return directory / rel.parts[0]
-
-
-def outside_node(directory: Path, path: Path) -> Path | None:
-    return child_of(lca(directory, path), path)
-
-
-def build_view(directory: Path, edge_names: EdgeNames) -> PairEdges:
-    # (node_src, node_tgt) -> set of (importer_rel, target_rel) file-level edges
-    pair_edges: PairEdges = {}
-    for f_rel, t_rel in edge_names:
-        f_in = f_rel.is_relative_to(directory)
-        t_in = t_rel.is_relative_to(directory)
-        if not f_in and not t_in:
-            continue
-        if f_in and t_in:
-            src = child_of(directory, f_rel)
-            tgt = child_of(directory, t_rel)
-        elif f_in:
-            src = child_of(directory, f_rel)
-            tgt = outside_node(directory, t_rel)
-        else:
-            src = outside_node(directory, f_rel)
-            tgt = child_of(directory, t_rel)
-        if src is None or tgt is None or src == tgt:
-            continue
-        pair_edges.setdefault((src, tgt), set()).add((f_rel, t_rel))
-    return pair_edges
+def is_private_name(name: str) -> bool:
+    """A name private by Rust's convention, ported to PEP 8 underscores:
+    one leading underscore, not a dunder, not the bare `_` placeholder
+    name."""
+    return name.startswith("_") and not name.startswith("__") and name != "_"
 
 
 def build_file_graph(
@@ -417,23 +373,27 @@ def build_file_graph(
     return adj, radj
 
 
-def build_graph(
-    repo: Path,
-) -> tuple[
-    list[Path],
-    set[Path],
-    EdgeNames,
-    dict[Path, set[str]],
-    dict[Path, set[Path]],
-    dict[Path, set[Path]],
-]:
-    """Parses `repo` once and builds every structure every subcommand needs:
-    the file list, the directories holding Python code, the file-level
-    import edges (and their imported names), each file's top-level defined
-    names, and the forward/reverse file adjacency. Prints ambiguous-import
-    warnings to stderr along the way. Reach and file/directory scores are
-    not computed here -- `check` never uses them, so `graph` and `metrics`
-    compute them in their own run_* path."""
+@dataclass(frozen=True, slots=True)
+class RepoGraph:
+    """Every structure every subcommand needs, built once from one parse of
+    `repo`: the file list, the directories holding Python code, the
+    file-level import edges (and their imported names), each file's
+    top-level defined names, and the forward/reverse file adjacency."""
+
+    py_files: list[Path]
+    dirs_with_py: set[Path]
+    edge_names: EdgeNames
+    defined_names: dict[Path, set[str]]
+    adj: dict[Path, set[Path]]
+    radj: dict[Path, set[Path]]
+
+
+def build_graph(repo: Path) -> RepoGraph:
+    """Parses `repo` once and builds every structure every subcommand needs.
+    Prints ambiguous-import warnings to stderr along the way. Reach and
+    file/directory scores are not computed here -- `check` never uses
+    them, so `graph` and `metrics` compute them in their own run_*
+    path."""
     py_files = find_py_files(repo)
     dirs_with_py, module_candidates, suffix_index = build_index(repo, py_files)
     edge_names, warnings, defined_names = collect_edges(
@@ -450,4 +410,4 @@ def build_graph(
     nodes = {f.relative_to(repo) for f in py_files}
     adj, radj = build_file_graph(nodes, edge_names)
 
-    return py_files, dirs_with_py, edge_names, defined_names, adj, radj
+    return RepoGraph(py_files, dirs_with_py, edge_names, defined_names, adj, radj)
