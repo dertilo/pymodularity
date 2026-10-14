@@ -9,7 +9,7 @@ from pathlib import Path
 
 from underscope._cycles import compute_sccs
 from underscope._graph import EdgeKey, EdgeNames
-from underscope._resolve import is_private_name
+from underscope._names import is_private_name
 from underscope._scores import DirScore, FileScore
 from underscope._view_edges import PairEdges
 

@@ -9,7 +9,7 @@ from pathlib import Path
 
 from underscope._cycles import CycleFinding
 from underscope._graph import EdgeNames, should_skip_dir
-from underscope._resolve import is_private_name, module_comp
+from underscope._names import is_private_name, module_comp
 
 
 def _has_project_table(pyproject: Path) -> bool:

@@ -1,12 +1,13 @@
 """The module index (`Index`/`build_index`) and import resolution
 (`resolve_exact`/`resolve_relative`, returning the `Resolved | Ambiguous |
-Unresolved` sum) that `_graph._collect_edges` drives one ast walk with.
-`is_private_name`/`module_comp`, shared with `_check`, live here too."""
+Unresolved` sum) that `_graph._collect_edges` drives one ast walk with."""
 
 import sys
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+
+from underscope._names import module_comp
 
 # dotted module path components, e.g. ("shop", "billing", "pricing")
 _PathParts = tuple[str, ...]
@@ -69,12 +70,6 @@ class _ScoredCandidate:
     path: Path
     root: _PathParts
     is_namespace_dir: bool
-
-
-def module_comp(parts: tuple[str, ...]) -> _PathParts:
-    if parts[-1] == "__init__.py":
-        return parts[:-1]
-    return parts[:-1] + (parts[-1][:-3],)
 
 
 @dataclass(frozen=True, slots=True)
@@ -220,10 +215,3 @@ def resolve_relative(
     if cand is None:
         return Unresolved()
     return Resolved(cand.path)
-
-
-def is_private_name(name: str) -> bool:
-    """A name private by Rust's convention, ported to PEP 8 underscores:
-    one leading underscore, not a dunder, not the bare `_` placeholder
-    name."""
-    return name.startswith("_") and not name.startswith("__") and name != "_"
