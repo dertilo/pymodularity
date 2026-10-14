@@ -23,16 +23,14 @@ def _lca(a: Path, b: Path) -> Path:
     return Path(*common) if common else Path(".")
 
 
-def _child_of(directory: Path, path: Path) -> Path | None:
-    if path == directory:
-        return None
+def _child_of(directory: Path, path: Path) -> Path:
     if directory == Path("."):
         return Path(path.parts[0])
     rel = path.relative_to(directory)
     return directory / rel.parts[0]
 
 
-def _outside_node(directory: Path, path: Path) -> Path | None:
+def _outside_node(directory: Path, path: Path) -> Path:
     return _child_of(_lca(directory, path), path)
 
 
@@ -44,6 +42,10 @@ def build_view(directory: Path, edge_names: EdgeNames) -> PairEdges:
         t_in = t_rel.is_relative_to(directory)
         if not f_in and not t_in:
             continue
+        if directory.is_relative_to(f_rel) or directory.is_relative_to(t_rel):
+            # a namespace-package dir endpoint equals the view directory or
+            # is an ancestor of it: there is no distinct child/outside node.
+            continue
         if f_in and t_in:
             src = _child_of(directory, f_rel)
             tgt = _child_of(directory, t_rel)
@@ -53,7 +55,7 @@ def build_view(directory: Path, edge_names: EdgeNames) -> PairEdges:
         else:
             src = _outside_node(directory, f_rel)
             tgt = _child_of(directory, t_rel)
-        if src is None or tgt is None or src == tgt:
+        if src == tgt:
             continue
         pair_edges.setdefault((src, tgt), set()).add((f_rel, t_rel))
     return pair_edges

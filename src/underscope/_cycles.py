@@ -162,20 +162,21 @@ def _find_example_cycle(
     stack: list[Path] = [start]
     visited: set[Path] = {start}
 
-    def dfs(node: Path) -> tuple[Path, ...] | None:
+    def dfs(node: Path) -> bool:
         for nxt in adj[node]:
             if nxt == start and len(stack) > 1:
-                return (*stack, start)
+                return True
             if nxt not in visited:
                 visited.add(nxt)
                 stack.append(nxt)
-                result = dfs(nxt)
-                if result is not None:
-                    return result
+                if dfs(nxt):
+                    return True
                 stack.pop()
-        return None
+        return False
 
-    return dfs(start) or (start,)
+    # an SCC guarantees a loop through start, so dfs always finds one
+    dfs(start)
+    return (*stack, start)
 
 
 @dataclass(frozen=True, slots=True)

@@ -38,6 +38,20 @@ class _NamedCount:
 
 
 @dataclass(frozen=True, slots=True)
+class _InitSplit:
+    """A node with an `__init__.py`: how its incoming edges split between
+    the init file itself and the other files inside it."""
+
+    root: int
+    internals: int
+
+
+@dataclass(frozen=True, slots=True)
+class _NoInitFile:
+    """A node with no `__init__.py` to split incoming edges against."""
+
+
+@dataclass(frozen=True, slots=True)
 class _NodeRow:
     """One inside child's row in a view's summary node table."""
 
@@ -47,8 +61,7 @@ class _NodeRow:
     top_names: tuple[_NamedCount, ...]
     internal: int
     outgoing: int
-    root: int | None
-    internals: int | None
+    init_split: _InitSplit | _NoInitFile
     private: int
     reach_a: int
     reach_b: int
@@ -98,15 +111,13 @@ def _compute_node_rows(
             if src == node and tgt != node:
                 outgoing_pairs |= file_pairs
 
-        root: int | None
-        internals: int | None
+        init_split: _InitSplit | _NoInitFile
         init_path = node / "__init__.py"
         if node in dirs_with_py and (repo / init_path).is_file():
             root = sum(1 for _, t_rel in incoming_file_pairs if t_rel == init_path)
-            internals = len(incoming_file_pairs) - root
+            init_split = _InitSplit(root, len(incoming_file_pairs) - root)
         else:
-            root = None
-            internals = None
+            init_split = _NoInitFile()
 
         if node in dirs_with_py:
             ds = dir_scores[node]
@@ -123,8 +134,7 @@ def _compute_node_rows(
                 top_names_fmt,
                 len(internal_pairs),
                 len(outgoing_pairs),
-                root,
-                internals,
+                init_split,
                 private,
                 reach_a,
                 reach_b,
@@ -212,7 +222,11 @@ def _render_summary(
         if row.top_names:
             top_str = ", ".join(f"{nc.name} ({nc.count})" for nc in row.top_names)
             names_cell = f"{row.distinct_names} ({top_str})"
-        root_cell = "-" if row.root is None else f"{row.root}/{row.internals}"
+        root_cell = (
+            "-"
+            if isinstance(row.init_split, _NoInitFile)
+            else f"{row.init_split.root}/{row.init_split.internals}"
+        )
         left = f"| {label(row.node)} | {row.importing_units} | {names_cell} |"
         right = f" {row.internal} | {row.outgoing} | {root_cell} | {row.private} |"
         reach_cell = f" {row.reach_a} | {row.reach_b} | {row.score} |"

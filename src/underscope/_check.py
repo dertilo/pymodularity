@@ -41,16 +41,17 @@ def _owning_package_root(rel: Path, package_roots: Sequence[Path]) -> Path:
     return Path(".")
 
 
-def _private_owner_dir(rel: Path, package_roots: Sequence[Path]) -> Path | None:
-    """The directory a private file/dir component makes it private to, or
-    None if no component of rel (relative to its package root) is private."""
+def _visibility_scope(rel: Path, package_roots: Sequence[Path]) -> Path:
+    """The directory whose subtree may import rel: the private owner of its
+    first private file/dir component, or the repo root (everyone) if rel has
+    no private component (relative to its package root)."""
     root = _owning_package_root(rel, package_roots)
     sub = rel.relative_to(root) if root != Path(".") else rel
     comp = module_comp(sub.parts)
     for k, part in enumerate(comp):
         if is_private_name(part):
             return root / Path(*comp[:k]) if comp[:k] else root
-    return None
+    return Path(".")
 
 
 @dataclass(frozen=True, slots=True)
@@ -67,18 +68,18 @@ def find_privacy_violations(
     edge_names: EdgeNames, package_roots: Sequence[Path]
 ) -> tuple[_PrivacyViolation, ...]:
     violations: list[_PrivacyViolation] = []
-    owner_cache: dict[Path, Path | None] = {}
+    scope_cache: dict[Path, Path] = {}
 
-    def owner_of(rel: Path) -> Path | None:
-        if rel not in owner_cache:
-            owner_cache[rel] = _private_owner_dir(rel, package_roots)
-        return owner_cache[rel]
+    def scope_of(rel: Path) -> Path:
+        if rel not in scope_cache:
+            scope_cache[rel] = _visibility_scope(rel, package_roots)
+        return scope_cache[rel]
 
     for importer_rel, target_rel in edge_names:
-        owner = owner_of(target_rel)
-        if owner is None or importer_rel.is_relative_to(owner):
+        scope = scope_of(target_rel)
+        if importer_rel.is_relative_to(scope):
             continue
-        violations.append(_PrivacyViolation(importer_rel, target_rel, owner))
+        violations.append(_PrivacyViolation(importer_rel, target_rel, scope))
 
     violations.sort(key=lambda v: (str(v.importer), str(v.target)))
     return tuple(violations)

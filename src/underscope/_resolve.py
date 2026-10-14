@@ -48,6 +48,30 @@ _ResolvedImport = tuple[Path, frozenset[str]]
 
 
 @dataclass(frozen=True, slots=True)
+class _Resolved:
+    """A single unambiguous module match."""
+
+    path: Path
+
+
+@dataclass(frozen=True, slots=True)
+class _Ambiguous:
+    """Several module matches equally plausible for the importer; the
+    caller records a warning and treats the import as unresolved."""
+
+    candidates: tuple[Path, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class _Unresolved:
+    """No module matched (stdlib, third-party, or a dotted path with no
+    candidate in the repo)."""
+
+
+_Resolution = _Resolved | _Ambiguous | _Unresolved
+
+
+@dataclass(frozen=True, slots=True)
 class _ScoredCandidate:
     """A module candidate scored for disambiguation against the importer."""
 
@@ -147,15 +171,12 @@ def _path_components(p: Path) -> _PathParts:
     return () if p == Path(".") else p.parts
 
 
-# nosemgrep: no-mutable-collections-in-signatures  # warnings accumulator: appended across many resolution calls sharing one _collect_edges pass
 def _disambiguate(
     cands: Sequence[_SuffixEntry],
     importer_dir_parts: _PathParts,
     suf: _PathParts,
-    importer_rel: Path,
-    warnings: list[_AmbiguityWarning],
     module_candidates: _ModuleCandidates,
-) -> Path | None:
+) -> _Resolution:
     uniq: dict[tuple[_PathParts, Path], bool] = {}
     for entry in cands:
         uniq[(entry.comp, entry.path)] = entry.is_namespace_dir
@@ -175,7 +196,7 @@ def _disambiguate(
     if ancestors:
         best_depth = max(s.root_depth for s in ancestors)
         best = [s for s in ancestors if s.root_depth == best_depth]
-        return best[0].path
+        return _Resolved(best[0].path)
 
     # a non-ancestor root is only valid if it is not itself inside a package:
     # a module nested in someone else's package is not importable as a
@@ -201,70 +222,48 @@ def _disambiguate(
         )
     ]
     if len(non_package_root) == 1:
-        return non_package_root[0].path
+        return _Resolved(non_package_root[0].path)
 
     if not non_package_root:
-        return None
+        return _Unresolved()
 
-    warnings.append((importer_rel, tuple(s.path for s in non_package_root)))
-    return None
+    return _Ambiguous(tuple(s.path for s in non_package_root))
 
 
-# nosemgrep: no-mutable-collections-in-signatures  # warnings accumulator: appended across many resolution calls sharing one _collect_edges pass
 def _resolve_exact(
     dotted_parts: Sequence[str],
     importer_dir_parts: _PathParts,
     suffix_index: _SuffixIndex,
-    importer_rel: Path,
-    warnings: list[_AmbiguityWarning],
     module_candidates: _ModuleCandidates,
-) -> Path | None:
+) -> _Resolution:
     if not dotted_parts or dotted_parts[0] in sys.stdlib_module_names:
-        return None
+        return _Unresolved()
     suf = tuple(dotted_parts)
     cands = suffix_index.get(suf)
     if not cands:
-        return None
-    return _disambiguate(
-        cands,
-        importer_dir_parts,
-        suf,
-        importer_rel,
-        warnings,
-        module_candidates,
-    )
+        return _Unresolved()
+    return _disambiguate(cands, importer_dir_parts, suf, module_candidates)
 
 
 def _resolve_relative(
-    module: str | None,
+    module_parts: _PathParts,
     level: int,
-    names: Sequence[ast.alias],
     importer_dir_parts: _PathParts,
     module_candidates: _ModuleCandidates,
-) -> tuple[_ResolvedImport, ...]:
+) -> _Resolution:
     drop = level - 1
     if drop > len(importer_dir_parts):
-        return ()
+        return _Unresolved()
     target_dir = (
         importer_dir_parts[: len(importer_dir_parts) - drop]
         if drop
         else importer_dir_parts
     )
-
-    results: list[_ResolvedImport] = []
-    if module:
-        comp = target_dir + tuple(module.split("."))
-        cand = module_candidates.get(comp)
-        if cand:
-            names_here = frozenset(alias.name for alias in names)
-            results.append((cand.path, names_here))
-    else:
-        for alias in names:
-            comp = target_dir + (alias.name,)
-            cand = module_candidates.get(comp)
-            if cand:
-                results.append((cand.path, frozenset()))
-    return tuple(results)
+    comp = target_dir + module_parts
+    cand = module_candidates.get(comp)
+    if cand is None:
+        return _Unresolved()
+    return _Resolved(cand.path)
 
 
 def _top_level_defined_names(tree: ast.Module) -> frozenset[str]:
@@ -322,51 +321,59 @@ def _collect_edges(
             if isinstance(node, ast.Import):
                 for alias in node.names:
                     dotted = alias.name.split(".")
-                    t = _resolve_exact(
-                        dotted,
-                        importer_dir_parts,
-                        suffix_index,
-                        rel,
-                        warnings,
-                        module_candidates,
+                    res = _resolve_exact(
+                        dotted, importer_dir_parts, suffix_index, module_candidates
                     )
-                    if t is not None:
-                        targets.append((t, frozenset()))
+                    if isinstance(res, _Ambiguous):
+                        warnings.append((rel, res.candidates))
+                    elif isinstance(res, _Resolved):
+                        targets.append((res.path, frozenset()))
             elif isinstance(node, ast.ImportFrom):
                 if node.level and node.level > 0:
-                    targets.extend(
-                        _resolve_relative(
-                            node.module,
+                    requests: list[tuple[_PathParts, frozenset[str]]]
+                    if node.module:
+                        requests = [
+                            (
+                                tuple(node.module.split(".")),
+                                frozenset(alias.name for alias in node.names),
+                            )
+                        ]
+                    else:
+                        requests = [((alias.name,), frozenset()) for alias in node.names]
+                    for module_parts, names_here in requests:
+                        res = _resolve_relative(
+                            module_parts,
                             node.level,
-                            node.names,
                             importer_dir_parts,
                             module_candidates,
                         )
-                    )
+                        if isinstance(res, _Resolved):
+                            targets.append((res.path, names_here))
                 else:
                     module_parts = node.module.split(".") if node.module else []
                     for alias in node.names:
-                        t = _resolve_exact(
+                        res = _resolve_exact(
                             module_parts + [alias.name],
                             importer_dir_parts,
                             suffix_index,
-                            rel,
-                            warnings,
                             module_candidates,
                         )
-                        if t is not None:
-                            targets.append((t, frozenset()))
+                        if isinstance(res, _Ambiguous):
+                            warnings.append((rel, res.candidates))
                             continue
-                        t = _resolve_exact(
+                        if isinstance(res, _Resolved):
+                            targets.append((res.path, frozenset()))
+                            continue
+                        res = _resolve_exact(
                             module_parts,
                             importer_dir_parts,
                             suffix_index,
-                            rel,
-                            warnings,
                             module_candidates,
                         )
-                        if t is not None:
-                            targets.append((t, frozenset({alias.name})))
+                        if isinstance(res, _Ambiguous):
+                            warnings.append((rel, res.candidates))
+                        elif isinstance(res, _Resolved):
+                            targets.append((res.path, frozenset({alias.name})))
 
         for t, names_here in targets:
             trel = t.relative_to(repo)
