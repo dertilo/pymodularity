@@ -1,14 +1,10 @@
-"""File discovery, import resolution and file-level edge collection: build
-the whole-repo Python import graph with ast (stdlib only), plus the
-`_build_file_graph`/`build_graph` entry points every subcommand calls.
-Shared types produced by resolution (_PathParts, EdgeNames, ...) live
-here too."""
+"""The module index (`Index`/`build_index`) and import resolution
+(`resolve_exact`/`resolve_relative`, returning the `Resolved | Ambiguous |
+Unresolved` sum) that `_graph._collect_edges` drives one ast walk with.
+`is_private_name`/`module_comp`, shared with `_check`, live here too."""
 
-import ast
-import os
 import sys
 from collections.abc import Mapping, Sequence
-from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -25,7 +21,7 @@ class _ModuleCandidate:
     is_namespace_dir: bool
 
 
-_ModuleCandidates = Mapping[_PathParts, _ModuleCandidate]
+ModuleCandidates = Mapping[_PathParts, _ModuleCandidate]
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,25 +33,18 @@ class _SuffixEntry:
     is_namespace_dir: bool
 
 
-_SuffixIndex = Mapping[_PathParts, tuple[_SuffixEntry, ...]]
-# an ambiguous-import warning: the importing file and its candidate targets
-_AmbiguityWarning = tuple[Path, tuple[Path, ...]]
-# (importer_rel, target_rel) file-level import edge
-EdgeKey = tuple[Path, Path]
-EdgeNames = Mapping[EdgeKey, frozenset[str]]
-# a resolved absolute/relative import: target file, imported names (if any)
-_ResolvedImport = tuple[Path, frozenset[str]]
+SuffixIndex = Mapping[_PathParts, tuple[_SuffixEntry, ...]]
 
 
 @dataclass(frozen=True, slots=True)
-class _Resolved:
+class Resolved:
     """A single unambiguous module match."""
 
     path: Path
 
 
 @dataclass(frozen=True, slots=True)
-class _Ambiguous:
+class Ambiguous:
     """Several module matches equally plausible for the importer; the
     caller records a warning and treats the import as unresolved."""
 
@@ -63,12 +52,12 @@ class _Ambiguous:
 
 
 @dataclass(frozen=True, slots=True)
-class _Unresolved:
+class Unresolved:
     """No module matched (stdlib, third-party, or a dotted path with no
     candidate in the repo)."""
 
 
-_Resolution = _Resolved | _Ambiguous | _Unresolved
+_Resolution = Resolved | Ambiguous | Unresolved
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,39 +71,6 @@ class _ScoredCandidate:
     is_namespace_dir: bool
 
 
-_SKIP_DIRS = frozenset(
-    {
-        ".git",
-        ".venv",
-        "venv",
-        "node_modules",
-        "__pycache__",
-        "build",
-        "dist",
-        "tests",
-        "test",
-    }
-)
-
-
-def should_skip_dir(name: str) -> bool:
-    return name in _SKIP_DIRS or name.startswith(".")
-
-
-def _is_test_file(name: str) -> bool:
-    return name == "conftest.py" or name.startswith("test_") or name.endswith("_test.py")
-
-
-def _find_py_files(repo: Path) -> tuple[Path, ...]:
-    files: list[Path] = []
-    for dirpath, dirnames, filenames in os.walk(repo):
-        dirnames[:] = [d for d in dirnames if not should_skip_dir(d)]
-        for fn in filenames:
-            if fn.endswith(".py") and not _is_test_file(fn):
-                files.append(Path(dirpath) / fn)
-    return tuple(files)
-
-
 def module_comp(parts: tuple[str, ...]) -> _PathParts:
     if parts[-1] == "__init__.py":
         return parts[:-1]
@@ -122,17 +78,17 @@ def module_comp(parts: tuple[str, ...]) -> _PathParts:
 
 
 @dataclass(frozen=True, slots=True)
-class _Index:
+class Index:
     """What a repo's file list indexes into: the directories holding Python
     code, every resolvable module candidate, and that candidate set indexed
     by dotted suffix for lookup."""
 
     dirs_with_py: frozenset[Path]
-    module_candidates: _ModuleCandidates
-    suffix_index: _SuffixIndex
+    module_candidates: ModuleCandidates
+    suffix_index: SuffixIndex
 
 
-def _build_index(repo: Path, py_files: Sequence[Path]) -> _Index:
+def build_index(repo: Path, py_files: Sequence[Path]) -> Index:
     dirs_with_py: set[Path] = set()
     for f in py_files:
         d = f.relative_to(repo).parent
@@ -162,12 +118,12 @@ def _build_index(repo: Path, py_files: Sequence[Path]) -> _Index:
             suffix_index.setdefault(suf, []).append(
                 _SuffixEntry(comp, cand.path, cand.is_namespace_dir)
             )
-    frozen_suffix_index: _SuffixIndex = {suf: tuple(v) for suf, v in suffix_index.items()}
+    frozen_suffix_index: SuffixIndex = {suf: tuple(v) for suf, v in suffix_index.items()}
 
-    return _Index(frozenset(dirs_with_py), module_candidates, frozen_suffix_index)
+    return Index(frozenset(dirs_with_py), module_candidates, frozen_suffix_index)
 
 
-def _path_components(p: Path) -> _PathParts:
+def path_components(p: Path) -> _PathParts:
     return () if p == Path(".") else p.parts
 
 
@@ -175,7 +131,7 @@ def _disambiguate(
     cands: Sequence[_SuffixEntry],
     importer_dir_parts: _PathParts,
     suf: _PathParts,
-    module_candidates: _ModuleCandidates,
+    module_candidates: ModuleCandidates,
 ) -> _Resolution:
     uniq: dict[tuple[_PathParts, Path], bool] = {}
     for entry in cands:
@@ -196,7 +152,7 @@ def _disambiguate(
     if ancestors:
         best_depth = max(s.root_depth for s in ancestors)
         best = [s for s in ancestors if s.root_depth == best_depth]
-        return _Resolved(best[0].path)
+        return Resolved(best[0].path)
 
     # a non-ancestor root is only valid if it is not itself inside a package:
     # a module nested in someone else's package is not importable as a
@@ -222,38 +178,38 @@ def _disambiguate(
         )
     ]
     if len(non_package_root) == 1:
-        return _Resolved(non_package_root[0].path)
+        return Resolved(non_package_root[0].path)
 
     if not non_package_root:
-        return _Unresolved()
+        return Unresolved()
 
-    return _Ambiguous(tuple(s.path for s in non_package_root))
+    return Ambiguous(tuple(s.path for s in non_package_root))
 
 
-def _resolve_exact(
+def resolve_exact(
     dotted_parts: Sequence[str],
     importer_dir_parts: _PathParts,
-    suffix_index: _SuffixIndex,
-    module_candidates: _ModuleCandidates,
+    suffix_index: SuffixIndex,
+    module_candidates: ModuleCandidates,
 ) -> _Resolution:
     if not dotted_parts or dotted_parts[0] in sys.stdlib_module_names:
-        return _Unresolved()
+        return Unresolved()
     suf = tuple(dotted_parts)
     cands = suffix_index.get(suf)
     if not cands:
-        return _Unresolved()
+        return Unresolved()
     return _disambiguate(cands, importer_dir_parts, suf, module_candidates)
 
 
-def _resolve_relative(
+def resolve_relative(
     module_parts: _PathParts,
     level: int,
     importer_dir_parts: _PathParts,
-    module_candidates: _ModuleCandidates,
+    module_candidates: ModuleCandidates,
 ) -> _Resolution:
     drop = level - 1
     if drop > len(importer_dir_parts):
-        return _Unresolved()
+        return Unresolved()
     target_dir = (
         importer_dir_parts[: len(importer_dir_parts) - drop]
         if drop
@@ -262,127 +218,8 @@ def _resolve_relative(
     comp = target_dir + module_parts
     cand = module_candidates.get(comp)
     if cand is None:
-        return _Unresolved()
-    return _Resolved(cand.path)
-
-
-def _top_level_defined_names(tree: ast.Module) -> frozenset[str]:
-    """Names this module defines at top level: def, async def, class, and
-    plain or annotated assignment to a bare name. Imports don't count."""
-    defined: set[str] = set()
-    for stmt in tree.body:
-        if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-            defined.add(stmt.name)
-        elif isinstance(stmt, ast.Assign):
-            for target in stmt.targets:
-                if isinstance(target, ast.Name):
-                    defined.add(target.id)
-        elif isinstance(stmt, ast.AnnAssign) and isinstance(stmt.target, ast.Name):
-            defined.add(stmt.target.id)
-    return frozenset(defined)
-
-
-@dataclass(frozen=True, slots=True)
-class _CollectedEdges:
-    """What one parse of a repo's files collects: file-level import edges
-    (with their imported names), the ambiguous-import warnings raised along
-    the way, and each file's top-level defined names."""
-
-    edge_names: EdgeNames
-    warnings: tuple[_AmbiguityWarning, ...]
-    defined_names: Mapping[Path, frozenset[str]]
-
-
-def _collect_edges(
-    repo: Path,
-    py_files: Sequence[Path],
-    module_candidates: _ModuleCandidates,
-    suffix_index: _SuffixIndex,
-) -> _CollectedEdges:
-    # (importer_rel, target_rel) -> set of imported names (empty = no names,
-    # e.g. a plain "import x.y" or a "from a import b" where b is itself the
-    # resolved submodule rather than a name defined inside it)
-    edge_names: dict[EdgeKey, set[str]] = {}
-    warnings: list[_AmbiguityWarning] = []
-    defined_names: dict[Path, frozenset[str]] = {}
-    for f in sorted(py_files):
-        rel = f.relative_to(repo)
-        try:
-            text = f.read_text(encoding="utf-8")
-            tree = ast.parse(text, filename=str(f))
-        except (SyntaxError, UnicodeDecodeError) as e:
-            print(f"warning: skipping {rel}: {e}", file=sys.stderr)
-            continue
-
-        defined_names[rel] = _top_level_defined_names(tree)
-        importer_dir_parts = _path_components(rel.parent)
-        targets: list[_ResolvedImport] = []
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Import):
-                for alias in node.names:
-                    dotted = alias.name.split(".")
-                    res = _resolve_exact(
-                        dotted, importer_dir_parts, suffix_index, module_candidates
-                    )
-                    if isinstance(res, _Ambiguous):
-                        warnings.append((rel, res.candidates))
-                    elif isinstance(res, _Resolved):
-                        targets.append((res.path, frozenset()))
-            elif isinstance(node, ast.ImportFrom):
-                if node.level and node.level > 0:
-                    requests: list[tuple[_PathParts, frozenset[str]]]
-                    if node.module:
-                        requests = [
-                            (
-                                tuple(node.module.split(".")),
-                                frozenset(alias.name for alias in node.names),
-                            )
-                        ]
-                    else:
-                        requests = [((alias.name,), frozenset()) for alias in node.names]
-                    for module_parts, names_here in requests:
-                        res = _resolve_relative(
-                            module_parts,
-                            node.level,
-                            importer_dir_parts,
-                            module_candidates,
-                        )
-                        if isinstance(res, _Resolved):
-                            targets.append((res.path, names_here))
-                else:
-                    module_parts = node.module.split(".") if node.module else []
-                    for alias in node.names:
-                        res = _resolve_exact(
-                            module_parts + [alias.name],
-                            importer_dir_parts,
-                            suffix_index,
-                            module_candidates,
-                        )
-                        if isinstance(res, _Ambiguous):
-                            warnings.append((rel, res.candidates))
-                            continue
-                        if isinstance(res, _Resolved):
-                            targets.append((res.path, frozenset()))
-                            continue
-                        res = _resolve_exact(
-                            module_parts,
-                            importer_dir_parts,
-                            suffix_index,
-                            module_candidates,
-                        )
-                        if isinstance(res, _Ambiguous):
-                            warnings.append((rel, res.candidates))
-                        elif isinstance(res, _Resolved):
-                            targets.append((res.path, frozenset({alias.name})))
-
-        for t, names_here in targets:
-            trel = t.relative_to(repo)
-            if trel == rel:
-                continue
-            edge_names.setdefault((rel, trel), set()).update(names_here)
-
-    frozen_edge_names: EdgeNames = {k: frozenset(v) for k, v in edge_names.items()}
-    return _CollectedEdges(frozen_edge_names, tuple(warnings), defined_names)
+        return Unresolved()
+    return Resolved(cand.path)
 
 
 def is_private_name(name: str) -> bool:
@@ -390,71 +227,3 @@ def is_private_name(name: str) -> bool:
     one leading underscore, not a dunder, not the bare `_` placeholder
     name."""
     return name.startswith("_") and not name.startswith("__") and name != "_"
-
-
-@dataclass(frozen=True, slots=True)
-class _FileGraph:
-    """The raw file-level import graph: forward adjacency and its reverse."""
-
-    adj: Mapping[Path, frozenset[Path]]
-    radj: Mapping[Path, frozenset[Path]]
-
-
-def _build_file_graph(nodes: AbstractSet[Path], edge_names: EdgeNames) -> _FileGraph:
-    """Same edges `check`'s cycle rule uses: no self-edges (_collect_edges
-    already drops those), duplicates already collapsed by edge_names' dict
-    keys."""
-    adj: dict[Path, set[Path]] = {n: set() for n in nodes}
-    radj: dict[Path, set[Path]] = {n: set() for n in nodes}
-    for importer_rel, target_rel in edge_names:
-        if importer_rel in adj and target_rel in adj and importer_rel != target_rel:
-            adj[importer_rel].add(target_rel)
-            radj[target_rel].add(importer_rel)
-    frozen_adj = {n: frozenset(s) for n, s in adj.items()}
-    frozen_radj = {n: frozenset(s) for n, s in radj.items()}
-    return _FileGraph(frozen_adj, frozen_radj)
-
-
-@dataclass(frozen=True, slots=True)
-class _RepoGraph:
-    """Every structure every subcommand needs, built once from one parse of
-    `repo`: the file list, the directories holding Python code, the
-    file-level import edges (and their imported names), each file's
-    top-level defined names, and the forward/reverse file adjacency."""
-
-    py_files: tuple[Path, ...]
-    dirs_with_py: frozenset[Path]
-    edge_names: EdgeNames
-    defined_names: Mapping[Path, frozenset[str]]
-    adj: Mapping[Path, frozenset[Path]]
-    radj: Mapping[Path, frozenset[Path]]
-
-
-def build_graph(repo: Path) -> _RepoGraph:
-    """Parses `repo` once and builds every structure every subcommand needs.
-    Prints ambiguous-import warnings to stderr along the way. Reach and
-    file/directory scores are not computed here -- `check` never uses
-    them, so `graph` and `metrics` compute them in their own run_*
-    path."""
-    py_files = _find_py_files(repo)
-    idx = _build_index(repo, py_files)
-    collected = _collect_edges(repo, py_files, idx.module_candidates, idx.suffix_index)
-
-    for importer_rel, cands in collected.warnings:
-        cand_strs = ", ".join(str(c.relative_to(repo)) for c in cands)
-        print(
-            f"warning: ambiguous import in {importer_rel}: candidates {cand_strs}",
-            file=sys.stderr,
-        )
-
-    nodes = frozenset(f.relative_to(repo) for f in py_files)
-    file_graph = _build_file_graph(nodes, collected.edge_names)
-
-    return _RepoGraph(
-        py_files,
-        idx.dirs_with_py,
-        collected.edge_names,
-        collected.defined_names,
-        file_graph.adj,
-        file_graph.radj,
-    )

@@ -8,7 +8,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from underscope._cycles import CycleFinding
-from underscope._resolve import EdgeNames, is_private_name, module_comp, should_skip_dir
+from underscope._graph import EdgeNames, should_skip_dir
+from underscope._resolve import is_private_name, module_comp
 
 
 def _has_project_table(pyproject: Path) -> bool:

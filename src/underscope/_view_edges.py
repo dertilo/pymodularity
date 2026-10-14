@@ -5,7 +5,7 @@ shares."""
 
 from pathlib import Path
 
-from underscope._resolve import EdgeKey, EdgeNames
+from underscope._graph import EdgeKey, EdgeNames
 
 # (view node src, view node tgt)
 PairKey = tuple[Path, Path]
