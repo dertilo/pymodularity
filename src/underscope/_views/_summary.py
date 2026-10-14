@@ -1,6 +1,6 @@
 """A directory view's node summary table: one row per inside child, with
 its score columns (via `_scores`) and the Cycles section (via `_cycles`),
-rendered as the markdown block `_views.write_view` embeds."""
+rendered as the markdown block `render.write_view` embeds."""
 
 from collections.abc import Callable, Mapping
 from collections.abc import Set as AbstractSet
@@ -8,8 +8,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from underscope._cycles import compute_sccs
-from underscope._graph import EdgeKey, EdgeNames
-from underscope._names import is_private_name
+from underscope._parse.graph import EdgeKey, EdgeNames
+from underscope._parse.names import is_private_name
 from underscope._scores import DirScore, FileScore
 from underscope._view_edges import PairEdges
 

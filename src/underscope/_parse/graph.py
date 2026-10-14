@@ -12,7 +12,7 @@ from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 from pathlib import Path
 
-from underscope._resolve import (
+from underscope._parse._resolve import (
     Ambiguous,
     Index,
     ModuleCandidates,

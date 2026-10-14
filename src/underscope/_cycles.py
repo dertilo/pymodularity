@@ -8,7 +8,7 @@ from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 from pathlib import Path
 
-from underscope._graph import EdgeKey, EdgeNames
+from underscope._parse.graph import EdgeKey, EdgeNames
 from underscope._view_edges import PairEdges, build_view, compute_inside_nodes
 
 

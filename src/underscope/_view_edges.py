@@ -6,7 +6,7 @@ shares."""
 from collections.abc import Mapping
 from pathlib import Path
 
-from underscope._graph import EdgeKey, EdgeNames
+from underscope._parse.graph import EdgeKey, EdgeNames
 
 # (view node src, view node tgt)
 PairKey = tuple[Path, Path]

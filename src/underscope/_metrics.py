@@ -7,7 +7,7 @@ from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 from pathlib import Path
 
-from underscope._graph import EdgeNames
+from underscope._parse.graph import EdgeNames
 from underscope._scores import DirScore, FileScore, ancestor_dirs
 
 

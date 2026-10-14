@@ -1,13 +1,13 @@
 """The module index (`Index`/`build_index`) and import resolution
 (`resolve_exact`/`resolve_relative`, returning the `Resolved | Ambiguous |
-Unresolved` sum) that `_graph._collect_edges` drives one ast walk with."""
+Unresolved` sum) that `graph._collect_edges` drives one ast walk with."""
 
 import sys
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from underscope._names import module_comp
+from underscope._parse.names import module_comp
 
 # dotted module path components, e.g. ("shop", "billing", "pricing")
 _PathParts = tuple[str, ...]

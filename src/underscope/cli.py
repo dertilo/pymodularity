@@ -71,11 +71,11 @@ from underscope._check import (
     print_check_findings,
 )
 from underscope._cycles import count_file_level_cycles, find_all_cycle_findings
-from underscope._graph import build_graph
 from underscope._metrics import render_metrics
+from underscope._parse.graph import build_graph
 from underscope._scores import compute_scores
 from underscope._view_edges import build_view
-from underscope._views import write_view
+from underscope._views.render import write_view
 
 __version__ = "0.1.0"
 
