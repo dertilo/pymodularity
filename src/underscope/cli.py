@@ -32,8 +32,8 @@ Three subcommands:
 directory nodes) alongside index.md; the browser needs network access to
 load mermaid from a CDN.
 
-`underscope check <repo>` runs two convention checks and prints findings to
-stdout, exit 1 on any finding: (1) no import cycles, at every directory
+`underscope check <repo>` runs three convention checks and prints findings
+to stdout, exit 1 on any finding: (1) no import cycles, at every directory
 level (any SCC with more than 1 node in any directory's view, computed the
 same way the view's own Cycles section is, TYPE_CHECKING and
 function-body imports counted, tests excluded as always; no baseline,
@@ -53,7 +53,15 @@ same directory or that directory's own `__init__.py`; if `m` resolves to a
 package (`__init__.py` or a namespace package directory), `_x` is private
 to that directory and only files under it may import it. The attribute
 form (`import a.b; a.b._x`) is out of scope here; ruff's SLF001 already
-flags it.
+flags it. (3) dependency declarations, on by default, skipped with
+`--no-deps`: per package root, shells out to a pinned deptry
+(`uv run --directory <pkg> --with deptry==<version> --frozen deptry .
+--json-output <tmp>`, nested package roots excluded via
+`--extend-exclude`), needs `uv` on PATH (exit 2 if missing, never a
+silent skip); the first run creates a `.venv` per scanned package and
+downloads its dependencies. A package is skipped, not scanned, if it
+declares no runtime dependencies or has no uv.lock of its own; any other
+deptry failure, or unparseable JSON, is a finding-level failure.
 
 `underscope metrics <repo>` prints a coupling report to stdout on the same
 file graph (reach and score per file and per directory, interface width
@@ -70,6 +78,7 @@ from underscope._check import (
     print_check_findings,
 )
 from underscope._cycles import count_file_level_cycles, find_all_cycle_findings
+from underscope._deps import UvMissing, print_deps_findings, run_dependency_checks
 from underscope._metrics import render_metrics
 from underscope._parse.graph import build_graph
 from underscope._parse.packages import find_package_roots
@@ -84,6 +93,7 @@ class _CheckArgs(argparse.Namespace):
     # placeholder default for the static type only; argparse always
     # overwrites it before parse_args() returns
     repo: Path = Path()
+    deps: bool = True
 
 
 class _GraphArgs(argparse.Namespace):
@@ -96,10 +106,10 @@ class _MetricsArgs(argparse.Namespace):
     repo: Path = Path()
 
 
-def _run_check(repo: Path) -> int:
-    """`underscope check <repo>`: the import-cycle and privacy-convention
-    checks, findings printed to stdout, exit 1 on any finding, no views
-    written."""
+def _run_check(repo: Path, run_deps: bool) -> int:
+    """`underscope check <repo>`: the import-cycle, privacy-convention and
+    (unless `--no-deps`) dependency-declaration checks, findings printed to
+    stdout, exit 1 on any finding, no views written."""
     graph = build_graph(repo)
 
     cycle_findings = find_all_cycle_findings(graph.dirs_with_py, graph.edge_names)
@@ -111,7 +121,20 @@ def _run_check(repo: Path) -> int:
     any_finding = print_check_findings(
         cycle_findings, distinct_file_cycles, privacy_violations, name_violations
     )
-    return 1 if any_finding else 0
+
+    if not run_deps:
+        return 1 if any_finding else 0
+
+    deps_result = run_dependency_checks(repo)
+    if isinstance(deps_result, UvMissing):
+        print(
+            "error: `uv` not found on PATH; the dependency-declaration "
+            + "rule needs it (use --no-deps to skip)",
+            file=sys.stderr,
+        )
+        return 2
+    any_deps_finding = print_deps_findings(deps_result)
+    return 1 if any_finding or any_deps_finding else 0
 
 
 def _run_graph(repo: Path, out_dir: Path, write_html: bool) -> int:
@@ -178,11 +201,18 @@ def main() -> int:
     check_parser = subparsers.add_parser(
         "check",
         help=(
-            "run the import-cycle and privacy convention checks, print "
-            + "findings to stdout, exit 1 on any finding"
+            "run the import-cycle, privacy convention and dependency "
+            + "declaration checks, print findings to stdout, exit 1 on "
+            + "any finding"
         ),
     )
     check_parser.add_argument("repo", type=Path)
+    check_parser.add_argument(
+        "--no-deps",
+        dest="deps",
+        action="store_false",
+        help="skip the dependency-declaration rule (deptry), on by default",
+    )
 
     graph_parser = subparsers.add_parser("graph", help="write mermaid views")
     graph_parser.add_argument("repo", type=Path)
@@ -211,7 +241,8 @@ def main() -> int:
     if args.command == "check":
         check_args = _CheckArgs()
         check_args.repo = args.repo
-        return _run_check(check_args.repo.resolve())
+        check_args.deps = args.deps
+        return _run_check(check_args.repo.resolve(), check_args.deps)
     if args.command == "graph":
         graph_args = _GraphArgs()
         graph_args.repo = args.repo

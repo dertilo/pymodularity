@@ -16,13 +16,18 @@ from pathlib import Path
 PACKAGE_DIR = Path(__file__).parent.parent / "src"
 
 
-def run_check(repo: Path) -> subprocess.CompletedProcess[str]:
+def run_check(
+    repo: Path,
+    extra_args: tuple[str, ...] = (),
+    env: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        [sys.executable, "-m", "underscope", "check", str(repo)],
+        [sys.executable, "-m", "underscope", "check", str(repo), *extra_args],
         capture_output=True,
         text=True,
         check=False,
         cwd=PACKAGE_DIR,
+        env=env,
     )
 
 
@@ -548,3 +553,88 @@ def test_metrics_misplaced_files_table(tmp_path: Path) -> None:
     assert "1 of 12 files misplaced." in section
     assert "| dirA/f.py | 0 | 4 | 1 | 3 | dirB |" in section
     assert "| dirA/h.py |" not in section
+
+
+def test_parse_deptry_json_handles_null_line() -> None:
+    """A deptry JSON finding with line/column null (deptry reports this for
+    some finding kinds) must parse to the "no position" case, not crash or
+    silently coerce null to 0."""
+    from underscope._deps import DepsResult, parse_deptry_json, print_deps_findings
+
+    raw = """
+    [
+      {
+        "error": {"code": "DEP002", "message": "'foo' defined but never used"},
+        "location": {"file": "pkg/m.py", "line": null, "column": null}
+      },
+      {
+        "error": {"code": "DEP001", "message": "'bar' not installed"},
+        "location": {"file": "pkg/n.py", "line": 3, "column": 1}
+      }
+    ]
+    """
+
+    parsed = parse_deptry_json(raw, Path("pkg"))
+
+    assert isinstance(parsed, tuple)
+    findings = parsed
+    assert len(findings) == 2
+    assert findings[0].code == "DEP002"
+    assert findings[1].code == "DEP001"
+
+    import io
+    from contextlib import redirect_stdout
+
+    out = io.StringIO()
+    with redirect_stdout(out):
+        print_deps_findings(DepsResult(findings=findings))
+    printed = out.getvalue()
+    assert "pkg/pkg/m.py: DEP002" in printed
+    assert "pkg/pkg/n.py:3:1: DEP001" in printed
+
+
+def test_deps_rule_skips_package_with_no_runtime_dependencies(tmp_path: Path) -> None:
+    """A package whose pyproject.toml has no [project].dependencies must be
+    skipped (not scanned, not a failure), exit 0, section present."""
+    write(tmp_path / "pyproject.toml", '[project]\nname = "nodep"\nversion = "0"\n')
+    write(tmp_path / "pkg/__init__.py", "")
+    write(tmp_path / "pkg/m1.py", "x = 1\n")
+
+    result = run_check(tmp_path)
+
+    assert result.returncode == 0
+    assert "## Dependency declarations: 0 finding(s)" in result.stdout
+    assert "skipped (declares no dependencies)" in result.stdout
+
+
+def test_no_deps_flag_omits_dependency_section(tmp_path: Path) -> None:
+    """`--no-deps` must skip the rule entirely: no section at all, not an
+    empty one."""
+    write(tmp_path / "pyproject.toml", '[project]\nname = "nodep"\nversion = "0"\n')
+    write(tmp_path / "pkg/__init__.py", "")
+    write(tmp_path / "pkg/m1.py", "x = 1\n")
+
+    result = run_check(tmp_path, extra_args=("--no-deps",))
+
+    assert result.returncode == 0
+    assert "Dependency declarations" not in result.stdout
+
+
+def test_deps_rule_exits_2_when_uv_missing(tmp_path: Path) -> None:
+    """`uv` missing from PATH must be a hard exit 2 with a one-line error,
+    never a silent skip of the whole rule."""
+    write(tmp_path / "pyproject.toml", '[project]\nname = "needsdep"\nversion = "0"\n')
+    write(tmp_path / "pkg/__init__.py", "")
+    write(tmp_path / "pkg/m1.py", "x = 1\n")
+
+    stub_bin = tmp_path / "_stub_bin"
+    stub_bin.mkdir()
+    env = {
+        "PATH": str(stub_bin),
+        "PYTHONPATH": str(PACKAGE_DIR),
+    }
+
+    result = run_check(tmp_path, env=env)
+
+    assert result.returncode == 2
+    assert "uv" in result.stderr.lower()
