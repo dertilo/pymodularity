@@ -80,7 +80,7 @@ def _compute_file_scores(
 
 
 @dataclass(frozen=True, slots=True)
-class Scores:
+class _Scores:
     """`graph` and `metrics`'s shared first step's result: file and
     directory scores, computed from reach."""
 
@@ -92,14 +92,14 @@ def compute_scores(
     dirs_with_py: AbstractSet[Path],
     adj: Mapping[Path, AbstractSet[Path]],
     radj: Mapping[Path, AbstractSet[Path]],
-) -> Scores:
+) -> _Scores:
     """`graph` and `metrics`'s shared first step: reach, then file and
     directory scores from it."""
     nodes = set(adj)
     reach = _compute_reach(nodes, adj, radj)
     file_scores = _compute_file_scores(nodes, reach.dependents, reach.dependencies)
     dir_scores = _compute_dir_scores(dirs_with_py, reach.dependents, reach.dependencies)
-    return Scores(file_scores, dir_scores)
+    return _Scores(file_scores, dir_scores)
 
 
 def ancestor_dirs(rel: Path) -> tuple[Path, ...]:

@@ -24,7 +24,7 @@ from typing import cast
 
 from underscope._parse.packages import find_package_roots
 
-DEPTRY_VERSION = "0.25.1"
+_DEPTRY_VERSION = "0.25.1"
 
 _NO_LOCKFILE_MARKER = "Unable to find lockfile"
 
@@ -45,7 +45,7 @@ _Position = _KnownPosition | _UnknownPosition
 
 
 @dataclass(frozen=True, slots=True)
-class DepFinding:
+class _DepFinding:
     """One deptry finding, scoped to the package it was found in."""
 
     pkg: Path
@@ -71,8 +71,8 @@ class _Failed:
 
 
 @dataclass(frozen=True, slots=True)
-class DepsResult:
-    findings: tuple[DepFinding, ...] = ()
+class _DepsResult:
+    findings: tuple[_DepFinding, ...] = ()
     skipped: tuple[_Skipped, ...] = field(default_factory=tuple)
     failed: tuple[_Failed, ...] = field(default_factory=tuple)
 
@@ -113,14 +113,14 @@ class _ParseError:
     message: str
 
 
-def parse_deptry_json(raw: str, pkg: Path) -> tuple[DepFinding, ...] | _ParseError:
+def _parse_deptry_json(raw: str, pkg: Path) -> tuple[_DepFinding, ...] | _ParseError:
     try:
         data = cast(object, json.loads(raw))
     except json.JSONDecodeError as exc:
         return _ParseError(str(exc))
     if not isinstance(data, list):
         return _ParseError("expected a JSON list")
-    findings: list[DepFinding] = []
+    findings: list[_DepFinding] = []
     for item in cast(list[object], data):
         if not isinstance(item, dict):
             return _ParseError("expected a JSON object per finding")
@@ -137,7 +137,7 @@ def parse_deptry_json(raw: str, pkg: Path) -> tuple[DepFinding, ...] | _ParseErr
         ):
             return _ParseError("expected str fields in error/location")
         findings.append(
-            DepFinding(
+            _DepFinding(
                 pkg=pkg,
                 file=file,
                 position=_position_from(loc.get("line"), loc.get("column")),
@@ -150,7 +150,7 @@ def parse_deptry_json(raw: str, pkg: Path) -> tuple[DepFinding, ...] | _ParseErr
 
 def _run_deptry_on(
     repo: Path, pkg: Path, package_roots: Sequence[Path], tmp_dir: Path
-) -> _Skipped | _Failed | tuple[DepFinding, ...]:
+) -> _Skipped | _Failed | tuple[_DepFinding, ...]:
     pkg_abs = repo / pkg
     cmd = [
         "uv",
@@ -158,7 +158,7 @@ def _run_deptry_on(
         "--directory",
         str(pkg_abs),
         "--with",
-        f"deptry=={DEPTRY_VERSION}",
+        f"deptry=={_DEPTRY_VERSION}",
         "--frozen",
         "deptry",
         ".",
@@ -173,7 +173,7 @@ def _run_deptry_on(
     proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
 
     if json_out.exists():
-        parsed = parse_deptry_json(json_out.read_text(), pkg)
+        parsed = _parse_deptry_json(json_out.read_text(), pkg)
         if isinstance(parsed, _ParseError):
             return _Failed(pkg, parsed.message)
         return parsed
@@ -189,14 +189,14 @@ class UvMissing:
     all, never a silent skip."""
 
 
-def run_dependency_checks(repo: Path) -> DepsResult | UvMissing:
+def run_dependency_checks(repo: Path) -> _DepsResult | UvMissing:
     """Scans every package root under repo with deptry, one uv-managed
     environment per package."""
     if shutil.which("uv") is None:
         return UvMissing()
 
     package_roots = find_package_roots(repo)
-    findings: list[DepFinding] = []
+    findings: list[_DepFinding] = []
     skipped: list[_Skipped] = []
     failed: list[_Failed] = []
 
@@ -218,7 +218,7 @@ def run_dependency_checks(repo: Path) -> DepsResult | UvMissing:
     findings.sort(key=lambda f: (str(f.pkg), f.file, _sort_pos(f.position)))
     skipped.sort(key=lambda s: str(s.pkg))
     failed.sort(key=lambda f: str(f.pkg))
-    return DepsResult(
+    return _DepsResult(
         findings=tuple(findings), skipped=tuple(skipped), failed=tuple(failed)
     )
 
@@ -234,7 +234,7 @@ def _sort_pos(position: _Position):
     return (0, 0)
 
 
-def print_deps_findings(result: DepsResult) -> bool:
+def print_deps_findings(result: _DepsResult) -> bool:
     """Prints the dependency-declaration section, returns True if any
     finding or failure exists (failures are finding-level, same exit
     behavior as a finding)."""

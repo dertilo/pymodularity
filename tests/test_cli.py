@@ -559,7 +559,7 @@ def test_parse_deptry_json_handles_null_line() -> None:
     """A deptry JSON finding with line/column null (deptry reports this for
     some finding kinds) must parse to the "no position" case, not crash or
     silently coerce null to 0."""
-    from underscope._deps import DepsResult, parse_deptry_json, print_deps_findings
+    from underscope._deps import _DepsResult, _parse_deptry_json, print_deps_findings
 
     raw = """
     [
@@ -574,7 +574,7 @@ def test_parse_deptry_json_handles_null_line() -> None:
     ]
     """
 
-    parsed = parse_deptry_json(raw, Path("pkg"))
+    parsed = _parse_deptry_json(raw, Path("pkg"))
 
     assert isinstance(parsed, tuple)
     findings = parsed
@@ -587,7 +587,7 @@ def test_parse_deptry_json_handles_null_line() -> None:
 
     out = io.StringIO()
     with redirect_stdout(out):
-        print_deps_findings(DepsResult(findings=findings))
+        print_deps_findings(_DepsResult(findings=findings))
     printed = out.getvalue()
     assert "pkg/pkg/m.py: DEP002" in printed
     assert "pkg/pkg/n.py:3:1: DEP001" in printed

@@ -180,7 +180,7 @@ def _find_example_cycle(
 
 
 @dataclass(frozen=True, slots=True)
-class FileEdge:
+class _FileEdge:
     """One concrete (importer file, target file) import edge."""
 
     importer: Path
@@ -189,13 +189,13 @@ class FileEdge:
 
 def _example_file_edges(
     example: Sequence[Path], pair_edges: PairEdges
-) -> tuple[FileEdge, ...]:
-    out: list[FileEdge] = []
+) -> tuple[_FileEdge, ...]:
+    out: list[_FileEdge] = []
     for a, b in itertools.pairwise(example):
         file_pairs = pair_edges.get((a, b))
         if file_pairs:
             best = min(file_pairs, key=lambda p: (str(p[0]), str(p[1])))
-            out.append(FileEdge(best[0], best[1]))
+            out.append(_FileEdge(best[0], best[1]))
     return tuple(out)
 
 
@@ -207,7 +207,7 @@ class CycleFinding:
     directory: Path
     members: tuple[Path, ...]
     example: tuple[Path, ...]
-    example_files: tuple[FileEdge, ...]
+    example_files: tuple[_FileEdge, ...]
 
 
 def _find_cycle_findings(

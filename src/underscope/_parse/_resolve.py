@@ -1,6 +1,6 @@
 """The module index (`Index`/`build_index`) and import resolution
 (`resolve_exact`/`resolve_relative`, returning the `Resolved | Ambiguous |
-Unresolved` sum) that `graph._collect_edges` drives one ast walk with."""
+_Unresolved` sum) that `graph._collect_edges` drives one ast walk with."""
 
 import sys
 from collections.abc import Mapping, Sequence
@@ -53,12 +53,12 @@ class Ambiguous:
 
 
 @dataclass(frozen=True, slots=True)
-class Unresolved:
+class _Unresolved:
     """No module matched (stdlib, third-party, or a dotted path with no
     candidate in the repo)."""
 
 
-_Resolution = Resolved | Ambiguous | Unresolved
+_Resolution = Resolved | Ambiguous | _Unresolved
 
 
 @dataclass(frozen=True, slots=True)
@@ -176,7 +176,7 @@ def _disambiguate(
         return Resolved(non_package_root[0].path)
 
     if not non_package_root:
-        return Unresolved()
+        return _Unresolved()
 
     return Ambiguous(tuple(s.path for s in non_package_root))
 
@@ -188,11 +188,11 @@ def resolve_exact(
     module_candidates: ModuleCandidates,
 ) -> _Resolution:
     if not dotted_parts or dotted_parts[0] in sys.stdlib_module_names:
-        return Unresolved()
+        return _Unresolved()
     suf = tuple(dotted_parts)
     cands = suffix_index.get(suf)
     if not cands:
-        return Unresolved()
+        return _Unresolved()
     return _disambiguate(cands, importer_dir_parts, suf, module_candidates)
 
 
@@ -204,7 +204,7 @@ def resolve_relative(
 ) -> _Resolution:
     drop = level - 1
     if drop > len(importer_dir_parts):
-        return Unresolved()
+        return _Unresolved()
     target_dir = (
         importer_dir_parts[: len(importer_dir_parts) - drop]
         if drop
@@ -213,5 +213,5 @@ def resolve_relative(
     comp = target_dir + module_parts
     cand = module_candidates.get(comp)
     if cand is None:
-        return Unresolved()
+        return _Unresolved()
     return Resolved(cand.path)
