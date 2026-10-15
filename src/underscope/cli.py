@@ -32,7 +32,7 @@ Three subcommands:
 directory nodes) alongside index.md; the browser needs network access to
 load mermaid from a CDN.
 
-`underscope check <repo>` runs three convention checks and prints findings
+`underscope check <repo>` runs five convention checks and prints findings
 to stdout, exit 1 on any finding: (1) no import cycles, at every directory
 level (any SCC with more than 1 node in any directory's view, computed the
 same way the view's own Cycles section is, TYPE_CHECKING and
@@ -61,7 +61,14 @@ flags it. (3) dependency declarations, on by default, skipped with
 silent skip); the first run creates a `.venv` per scanned package and
 downloads its dependencies. A package is skipped, not scanned, if it
 declares no runtime dependencies or has no uv.lock of its own; any other
-deptry failure, or unparseable JSON, is a finding-level failure.
+deptry failure, or unparseable JSON, is a finding-level failure. (4) and
+(5) structure limits, fixed constants, no config, no baseline: at most 500
+physical lines per file, 10 entries per directory (`__init__.py`/
+`__main__.py` excluded), 100 scanned files per package root, 15 public
+top-level names per file, and a public top-level name that no scanned
+file imports (a file no scanned file imports at all, `__init__.py` and
+`__main__.py`, and a name reachable through a whole-module import, are all
+exempt).
 
 `underscope metrics <repo>` prints a coupling report to stdout on the same
 file graph (reach and score per file and per directory, interface width
@@ -83,6 +90,12 @@ from underscope._metrics import render_metrics
 from underscope._parse.graph import build_graph
 from underscope._parse.packages import find_package_roots
 from underscope._scores import compute_scores
+from underscope._structure import (
+    find_structure_findings,
+    find_unused_public_names,
+    print_structure_findings,
+    print_unused_public_names,
+)
 from underscope._view_edges import build_view
 from underscope._views.render import write_view
 
@@ -122,19 +135,29 @@ def _run_check(repo: Path, run_deps: bool) -> int:
         cycle_findings, distinct_file_cycles, privacy_violations, name_violations
     )
 
-    if not run_deps:
-        return 1 if any_finding else 0
+    deps_finding = False
+    if run_deps:
+        deps_result = run_dependency_checks(repo)
+        if isinstance(deps_result, UvMissing):
+            print(
+                "error: `uv` not found on PATH; the dependency-declaration "
+                + "rule needs it (use --no-deps to skip)",
+                file=sys.stderr,
+            )
+            return 2
+        deps_finding = print_deps_findings(deps_result)
 
-    deps_result = run_dependency_checks(repo)
-    if isinstance(deps_result, UvMissing):
-        print(
-            "error: `uv` not found on PATH; the dependency-declaration "
-            + "rule needs it (use --no-deps to skip)",
-            file=sys.stderr,
-        )
-        return 2
-    any_deps_finding = print_deps_findings(deps_result)
-    return 1 if any_finding or any_deps_finding else 0
+    structure_findings = find_structure_findings(
+        repo, graph.py_files, graph.dirs_with_py, graph.defined_names
+    )
+    structure_finding = print_structure_findings(structure_findings)
+
+    unused_names = find_unused_public_names(
+        graph.py_files, repo, graph.edge_names, graph.defined_names
+    )
+    unused_finding = print_unused_public_names(unused_names)
+
+    return 1 if any_finding or deps_finding or structure_finding or unused_finding else 0
 
 
 def _run_graph(repo: Path, out_dir: Path, write_html: bool) -> int:

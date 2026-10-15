@@ -65,19 +65,59 @@ def _find_py_files(repo: Path) -> tuple[Path, ...]:
     return tuple(files)
 
 
+def _assign_target_names(target: ast.expr) -> tuple[str, ...]:
+    """Names bound by one assignment target, recursing into tuple/list
+    unpacking (including a starred element)."""
+    if isinstance(target, ast.Name):
+        return (target.id,)
+    if isinstance(target, (ast.Tuple, ast.List)):
+        names: list[str] = []
+        for elt in target.elts:
+            inner = elt.value if isinstance(elt, ast.Starred) else elt
+            names.extend(_assign_target_names(inner))
+        return tuple(names)
+    return ()
+
+
+def _names_from_stmt(stmt: ast.stmt) -> tuple[str, ...]:
+    """Names one statement defines: def/async def/class, plain or annotated
+    assignment (including tuple-unpacking), `type X = ...`, or the same
+    recursively inside an `if`/`try` block's branches (body, elif/else,
+    except handlers, finally). Imports never count."""
+    if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+        return (stmt.name,)
+    if isinstance(stmt, ast.Assign):
+        names: list[str] = []
+        for target in stmt.targets:
+            names.extend(_assign_target_names(target))
+        return tuple(names)
+    if isinstance(stmt, ast.AnnAssign):
+        return _assign_target_names(stmt.target)
+    if type(stmt).__name__ == "TypeAlias":
+        # `type X = ...` (py3.12+); accessed by name, not ast.TypeAlias,
+        # since this project's declared pythonVersion (3.11) doesn't know
+        # that attribute, and ast.parse itself only ever yields this node
+        # when running under a 3.12+ interpreter.
+        name_node: object = getattr(stmt, "name", None)
+        return (name_node.id,) if isinstance(name_node, ast.Name) else ()
+    if isinstance(stmt, ast.If):
+        return tuple(n for s in (*stmt.body, *stmt.orelse) for n in _names_from_stmt(s))
+    if isinstance(stmt, ast.Try):
+        branches = (*stmt.body, *stmt.orelse, *stmt.finalbody)
+        names = [n for s in branches for n in _names_from_stmt(s)]
+        for handler in stmt.handlers:
+            names.extend(n for s in handler.body for n in _names_from_stmt(s))
+        return tuple(names)
+    return ()
+
+
 def _top_level_defined_names(tree: ast.Module) -> frozenset[str]:
-    """Names this module defines at top level: def, async def, class, and
-    plain or annotated assignment to a bare name. Imports don't count."""
+    """Names this module defines at top level: def, async def, class, plain
+    or annotated assignment (including tuple-unpacking), `type X = ...`, and
+    the same nested in a top-level `if`/`try` block. Imports don't count."""
     defined: set[str] = set()
     for stmt in tree.body:
-        if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-            defined.add(stmt.name)
-        elif isinstance(stmt, ast.Assign):
-            for target in stmt.targets:
-                if isinstance(target, ast.Name):
-                    defined.add(target.id)
-        elif isinstance(stmt, ast.AnnAssign) and isinstance(stmt.target, ast.Name):
-            defined.add(stmt.target.id)
+        defined.update(_names_from_stmt(stmt))
     return frozenset(defined)
 
 
