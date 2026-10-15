@@ -148,12 +148,20 @@ def _run_check(repo: Path, run_deps: bool) -> int:
         deps_finding = print_deps_findings(deps_result)
 
     structure_findings = find_structure_findings(
-        repo, graph.py_files, graph.dirs_with_py, graph.defined_names
+        repo,
+        graph.py_files,
+        graph.dirs_with_py,
+        graph.defined_names,
+        graph.registered_names,
     )
     structure_finding = print_structure_findings(structure_findings)
 
     unused_names = find_unused_public_names(
-        graph.py_files, repo, graph.edge_names, graph.defined_names
+        graph.py_files,
+        repo,
+        graph.edge_names,
+        graph.defined_names,
+        graph.registered_names,
     )
     unused_finding = print_unused_public_names(unused_names)
 

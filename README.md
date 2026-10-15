@@ -47,14 +47,14 @@ shop/
   - a scanned file has at most 500 physical lines.
   - a directory has at most 10 entries, where an entry is a scanned `.py` file directly in it or a subdirectory holding scanned `.py` files, transitively; `__init__.py` and `__main__.py` don't count as entries (they're still scanned and still count toward the other limits).
   - a package root (the same `pyproject.toml` `[project]`-table directory the privacy and dependency rules anchor on) has at most 100 scanned files, each file counted against its nearest (innermost) package root.
-  - a file has at most 15 public top-level names (no leading `_`): `def`/`async def`/`class`, a plain or annotated assignment target (including tuple-unpacking), or a `type X = ...` alias, at top level or nested in a top-level `if`/`try` block (including `elif`/`else`, `except` handlers, `finally`). Imports never count.
+  - a file has at most 15 public top-level names (no leading `_`): `def`/`async def`/`class`, a plain or annotated assignment target (including tuple-unpacking), or a `type X = ...` alias, at top level or nested in a top-level `if`/`try` block (including `elif`/`else`, `except` handlers, `finally`). Imports never count. A top-level function (not a class) a decorator registers doesn't count either — see the exemption below.
 
 - **No unused public top-level name**: a public top-level name (same counting as the width limit above) that no scanned file imports is a finding, one line per name. Three exemptions, all silent (no finding, nothing printed as skipped):
   - a file no scanned file imports at all (a script or entry point) is exempt entirely — unused-looking names in dead code aren't this rule's problem, a missing caller is.
   - `__init__.py` and `__main__.py` are always exempt.
   - a file imported as a whole module (`import a.b`, or `from pkg import mod` where `mod` itself resolves rather than a name inside it — an edge with no specific names attached) has all its names treated as used, since the import site may reach any of them via attribute access this rule can't see.
   - test files never count as importers (they aren't scanned at all), so a name reached only from a test behaves like the "no scanned importer" case above, not like a used one.
-  - a decorator-registered function (e.g. a route handler) gets no exemption: if no scanned file imports it by name, it's still a finding — this rule only sees imports, not decorator registries.
+  - a top-level function (not a class — `@dataclass` sits on most models) a decorator registers is exempt from this rule and from the width limit above: FastAPI, Typer/Click, Dagster, pytest and the like derive part of their contract (route `operationId`, CLI command name, asset key, fixture name) from the function's name, so renaming it with a `_` prefix isn't a safe fix the way it is for an ordinary unused name. Any decorator counts — there's no list of framework names. Two accepted misses this buys: a truly dead `@functools.cache`-decorated function goes unflagged, and `@overload` exempts the real implementation's name too (its stub signatures already shadow it).
 
 ## The 3 subcommands
 

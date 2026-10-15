@@ -97,6 +97,37 @@ def test_file_width_violation(tmp_path: Path) -> None:
     assert "wide.py: 16 public names (limit 15)" in result.stdout
 
 
+def test_file_width_decorated_functions_exempt(tmp_path: Path) -> None:
+    """16 decorated public functions plus 1 plain undecorated one stays
+    under the 15-name limit: the decorated ones don't count. Catches an
+    implementation that exempts decorated names from the unused-name rule
+    but forgets to also exempt them from the width count."""
+    handlers = "\n\n\n".join(f"@route\ndef h{i}():\n    pass" for i in range(16))
+    write(
+        tmp_path / "wide.py",
+        f"def route(f):\n    return f\n\n\n{handlers}\n\n\ndef plain():\n    pass\n",
+    )
+
+    result = run_check(tmp_path, extra_args=("--no-deps",))
+
+    assert "wide.py" not in [
+        line for line in result.stdout.splitlines() if "public names" in line
+    ]
+
+
+def test_file_width_decorated_class_still_counts(tmp_path: Path) -> None:
+    """A decorated top-level class is not exempt from the width count
+    (only decorated functions are -- `@dataclass` sits on most models).
+    Catches an implementation that exempts any decorated def/class."""
+    names = "\n".join(f"n{i} = 1" for i in range(15))
+    write(tmp_path / "wide.py", f"{names}\n\n\n@register\nclass Extra:\n    pass\n")
+
+    result = run_check(tmp_path, extra_args=("--no-deps",))
+
+    assert result.returncode == 1
+    assert "wide.py: 16 public names (limit 15)" in result.stdout
+
+
 def test_unused_public_name_violation(tmp_path: Path) -> None:
     """A public top-level name no scanned file imports is a finding.
     Catches an implementation that never checks usage at all."""
@@ -169,18 +200,40 @@ def test_unused_public_name_tests_dont_count_as_importers(tmp_path: Path) -> Non
     assert "Unused public names: 0 finding(s)" in result.stdout
 
 
-def test_unused_public_name_decorator_registered_not_exempt(tmp_path: Path) -> None:
-    """A decorator-registered function (e.g. a route handler) gets no
-    exemption: it is still flagged as unused if no scanned file imports
-    it by name. Catches an implementation that special-cases decorated
-    defs."""
+def test_unused_public_name_decorator_registered_exempt(tmp_path: Path) -> None:
+    """A decorator-registered function (e.g. a FastAPI route handler) is
+    exempt from the unused-public-name rule: a framework derives its
+    contract from the function's name, so renaming it with a `_` prefix
+    isn't a safe fix. An undecorated unimported neighbour in the same
+    file is still flagged, to catch an implementation that exempts the
+    whole file instead of just registered names."""
     write(
         tmp_path / "a.py",
-        "def route(f):\n    return f\n\n\n@route\ndef handler():\n    pass\n",
+        "def route(f):\n    return f\n\n\n"
+        + "@route\ndef handler():\n    pass\n\n\n"
+        + "def unused_plain():\n    pass\n",
     )
     write(tmp_path / "b.py", "from a import route\n")
 
     result = run_check(tmp_path, extra_args=("--no-deps",))
 
     assert result.returncode == 1
-    assert "a.py: handler" in result.stdout
+    assert "a.py: handler" not in result.stdout
+    assert "a.py: unused_plain" in result.stdout
+
+
+def test_unused_public_name_decorated_class_still_a_finding(tmp_path: Path) -> None:
+    """A decorated top-level class gets no exemption from the
+    unused-name rule (only decorated functions do -- `@dataclass` sits
+    on most models). Catches an implementation that exempts any
+    decorated def/class rather than only functions."""
+    write(
+        tmp_path / "a.py",
+        "def register(c):\n    return c\n\n\n@register\nclass Model:\n    pass\n",
+    )
+    write(tmp_path / "b.py", "from a import register\n")
+
+    result = run_check(tmp_path, extra_args=("--no-deps",))
+
+    assert result.returncode == 1
+    assert "a.py: Model" in result.stdout

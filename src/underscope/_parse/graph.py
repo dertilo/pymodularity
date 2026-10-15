@@ -121,15 +121,47 @@ def _top_level_defined_names(tree: ast.Module) -> frozenset[str]:
     return frozenset(defined)
 
 
+def _registered_names_from_stmt(stmt: ast.stmt) -> tuple[str, ...]:
+    """Names of top-level functions (not classes) a decorator registers --
+    FastAPI routes, Typer/Click commands, Dagster assets, pytest fixtures --
+    including the same nested in a top-level `if`/`try` block. Any
+    decorator counts; there's no list of framework names."""
+    if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        return (stmt.name,) if stmt.decorator_list else ()
+    if isinstance(stmt, ast.If):
+        return tuple(
+            n for s in (*stmt.body, *stmt.orelse) for n in _registered_names_from_stmt(s)
+        )
+    if isinstance(stmt, ast.Try):
+        branches = (*stmt.body, *stmt.orelse, *stmt.finalbody)
+        names = [n for s in branches for n in _registered_names_from_stmt(s)]
+        for handler in stmt.handlers:
+            names.extend(n for s in handler.body for n in _registered_names_from_stmt(s))
+        return tuple(names)
+    return ()
+
+
+def _top_level_registered_names(tree: ast.Module) -> frozenset[str]:
+    """Names this module's top-level decorated functions define (not
+    classes -- `@dataclass` sits on most models), including the same
+    nested in a top-level `if`/`try` block."""
+    registered: set[str] = set()
+    for stmt in tree.body:
+        registered.update(_registered_names_from_stmt(stmt))
+    return frozenset(registered)
+
+
 @dataclass(frozen=True, slots=True)
 class _CollectedEdges:
     """What one parse of a repo's files collects: file-level import edges
     (with their imported names), the ambiguous-import warnings raised along
-    the way, and each file's top-level defined names."""
+    the way, each file's top-level defined names, and each file's
+    decorator-registered names (a subset of defined_names)."""
 
     edge_names: EdgeNames
     warnings: tuple[_AmbiguityWarning, ...]
     defined_names: Mapping[Path, frozenset[str]]
+    registered_names: Mapping[Path, frozenset[str]]
 
 
 def _collect_edges(
@@ -144,6 +176,7 @@ def _collect_edges(
     edge_names: dict[EdgeKey, set[str]] = {}
     warnings: list[_AmbiguityWarning] = []
     defined_names: dict[Path, frozenset[str]] = {}
+    registered_names: dict[Path, frozenset[str]] = {}
     for f in sorted(py_files):
         rel = f.relative_to(repo)
         try:
@@ -154,6 +187,7 @@ def _collect_edges(
             continue
 
         defined_names[rel] = _top_level_defined_names(tree)
+        registered_names[rel] = _top_level_registered_names(tree)
         importer_dir_parts = path_components(rel.parent)
         targets: list[_ResolvedImport] = []
         for node in ast.walk(tree):
@@ -221,7 +255,9 @@ def _collect_edges(
             edge_names.setdefault((rel, trel), set()).update(names_here)
 
     frozen_edge_names: EdgeNames = {k: frozenset(v) for k, v in edge_names.items()}
-    return _CollectedEdges(frozen_edge_names, tuple(warnings), defined_names)
+    return _CollectedEdges(
+        frozen_edge_names, tuple(warnings), defined_names, registered_names
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -252,12 +288,14 @@ class _RepoGraph:
     """Every structure every subcommand needs, built once from one parse of
     `repo`: the file list, the directories holding Python code, the
     file-level import edges (and their imported names), each file's
-    top-level defined names, and the forward/reverse file adjacency."""
+    top-level defined names, each file's decorator-registered names, and
+    the forward/reverse file adjacency."""
 
     py_files: tuple[Path, ...]
     dirs_with_py: frozenset[Path]
     edge_names: EdgeNames
     defined_names: Mapping[Path, frozenset[str]]
+    registered_names: Mapping[Path, frozenset[str]]
     adj: Mapping[Path, frozenset[Path]]
     radj: Mapping[Path, frozenset[Path]]
 
@@ -287,6 +325,7 @@ def build_graph(repo: Path) -> _RepoGraph:
         idx.dirs_with_py,
         collected.edge_names,
         collected.defined_names,
+        collected.registered_names,
         file_graph.adj,
         file_graph.radj,
     )

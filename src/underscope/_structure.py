@@ -121,10 +121,12 @@ def _find_package_size_violations(
 
 def _find_file_width_violations(
     defined_names: Mapping[Path, frozenset[str]],
+    registered_names: Mapping[Path, frozenset[str]],
 ) -> tuple[_FileTooWide, ...]:
     out: list[_FileTooWide] = []
     for f, names in defined_names.items():
-        public_count = sum(1 for n in names if _is_public(n))
+        registered = registered_names.get(f, frozenset())
+        public_count = sum(1 for n in names if _is_public(n) and n not in registered)
         if public_count > _MAX_PUBLIC_NAMES:
             out.append(_FileTooWide(f, public_count))
     out.sort(key=lambda v: str(v.file))
@@ -136,12 +138,13 @@ def find_structure_findings(
     py_files: Sequence[Path],
     dirs_with_py: AbstractSet[Path],
     defined_names: Mapping[Path, frozenset[str]],
+    registered_names: Mapping[Path, frozenset[str]],
 ) -> _StructureFindings:
     return _StructureFindings(
         too_long=_find_file_size_violations(repo, py_files),
         too_many_entries=_find_dir_entry_violations(dirs_with_py, py_files, repo),
         package_too_big=_find_package_size_violations(repo, py_files),
-        too_wide=_find_file_width_violations(defined_names),
+        too_wide=_find_file_width_violations(defined_names, registered_names),
     )
 
 
@@ -178,6 +181,7 @@ def find_unused_public_names(
     repo: Path,
     edge_names: EdgeNames,
     defined_names: Mapping[Path, frozenset[str]],
+    registered_names: Mapping[Path, frozenset[str]],
 ) -> tuple[_UnusedPublicName, ...]:
     out: list[_UnusedPublicName] = []
     for f in py_files:
@@ -196,8 +200,9 @@ def find_unused_public_names(
         used: set[str] = set()
         for _, names in edges_to_f:
             used.update(names)
+        registered = registered_names.get(rel, frozenset())
         for name in defined_names.get(rel, frozenset()):
-            if _is_public(name) and name not in used:
+            if _is_public(name) and name not in used and name not in registered:
                 out.append(_UnusedPublicName(rel, name))
     out.sort(key=lambda v: (str(v.file), v.name))
     return tuple(out)
