@@ -66,13 +66,13 @@ from pathlib import Path
 
 from underscope._check import (
     find_name_violations,
-    find_package_roots,
     find_privacy_violations,
     print_check_findings,
 )
 from underscope._cycles import count_file_level_cycles, find_all_cycle_findings
 from underscope._metrics import render_metrics
 from underscope._parse.graph import build_graph
+from underscope._parse.packages import find_package_roots
 from underscope._scores import compute_scores
 from underscope._view_edges import build_view
 from underscope._views.render import write_view

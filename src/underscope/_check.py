@@ -1,38 +1,13 @@
 """The privacy rules `underscope check` enforces (the cycle ban itself
 lives in `_cycles`), and the printing of all check findings."""
 
-import os
-import tomllib
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
 from underscope._cycles import CycleFinding
-from underscope._parse.graph import EdgeNames, should_skip_dir
+from underscope._parse.graph import EdgeNames
 from underscope._parse.names import is_private_name, module_comp
-
-
-def _has_project_table(pyproject: Path) -> bool:
-    try:
-        with pyproject.open("rb") as f:
-            data = tomllib.load(f)
-    except (OSError, tomllib.TOMLDecodeError):
-        return False
-    return "project" in data
-
-
-def find_package_roots(repo: Path) -> tuple[Path, ...]:
-    """Directories (relative to repo) whose pyproject.toml has a [project]
-    table, used only to anchor the privacy rule's "package root". Sorted
-    deepest-first so the closest ancestor is found first."""
-    roots: list[Path] = []
-    for dirpath, dirnames, filenames in os.walk(repo):
-        dirnames[:] = [d for d in dirnames if not should_skip_dir(d)]
-        if "pyproject.toml" in filenames and _has_project_table(
-            Path(dirpath) / "pyproject.toml"
-        ):
-            roots.append(Path(dirpath).relative_to(repo))
-    return tuple(sorted(roots, key=lambda p: len(p.parts), reverse=True))
 
 
 def _owning_package_root(rel: Path, package_roots: Sequence[Path]) -> Path:
