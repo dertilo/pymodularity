@@ -222,6 +222,40 @@ def test_unused_public_name_decorator_registered_exempt(tmp_path: Path) -> None:
     assert "a.py: unused_plain" in result.stdout
 
 
+def test_unused_public_name_local_only_suffix(tmp_path: Path) -> None:
+    """A public Protocol used only as a field annotation in its own file
+    (an `ast.Name` Load elsewhere in the file, e.g. the dataclass field's
+    type) -- never imported anywhere -- gets the "used only in this
+    file" suffix, not "dead", since deleting it would break the
+    annotation. Catches an implementation that only checks defined vs.
+    imported and ignores same-file usage."""
+    write(
+        tmp_path / "a.py",
+        "from typing import Protocol\n\n\n"
+        + "class Embedder(Protocol):\n    def embed(self, x: str) -> list[float]: ...\n\n\n"
+        + "class Config:\n    embedder: Embedder\n",
+    )
+    write(tmp_path / "b.py", "from a import Config\n")
+
+    result = run_check(tmp_path, extra_args=("--no-deps",))
+
+    assert result.returncode == 1
+    assert "a.py: Embedder (used only in this file: prefix with _)" in result.stdout
+
+
+def test_unused_public_name_dead_suffix(tmp_path: Path) -> None:
+    """A public function referenced nowhere, not even inside its own
+    file, gets the "dead" suffix. Catches an implementation that always
+    prints one suffix regardless of same-file usage."""
+    write(tmp_path / "a.py", "def used():\n    pass\n\n\ndef dead_fn():\n    pass\n")
+    write(tmp_path / "b.py", "from a import used\n")
+
+    result = run_check(tmp_path, extra_args=("--no-deps",))
+
+    assert result.returncode == 1
+    assert "a.py: dead_fn (dead: delete it)" in result.stdout
+
+
 def test_unused_public_name_decorated_class_still_a_finding(tmp_path: Path) -> None:
     """A decorated top-level class gets no exemption from the
     unused-name rule (only decorated functions do -- `@dataclass` sits

@@ -174,6 +174,7 @@ def print_structure_findings(findings: _StructureFindings) -> bool:
 class _UnusedPublicName:
     file: Path
     name: str
+    used_in_file: bool
 
 
 def find_unused_public_names(
@@ -182,6 +183,7 @@ def find_unused_public_names(
     edge_names: EdgeNames,
     defined_names: Mapping[Path, frozenset[str]],
     registered_names: Mapping[Path, frozenset[str]],
+    loaded_names: Mapping[Path, frozenset[str]],
 ) -> tuple[_UnusedPublicName, ...]:
     out: list[_UnusedPublicName] = []
     for f in py_files:
@@ -201,9 +203,10 @@ def find_unused_public_names(
         for _, names in edges_to_f:
             used.update(names)
         registered = registered_names.get(rel, frozenset())
+        loaded_here = loaded_names.get(rel, frozenset())
         for name in defined_names.get(rel, frozenset()):
             if _is_public(name) and name not in used and name not in registered:
-                out.append(_UnusedPublicName(rel, name))
+                out.append(_UnusedPublicName(rel, name, name in loaded_here))
     out.sort(key=lambda v: (str(v.file), v.name))
     return tuple(out)
 
@@ -211,6 +214,11 @@ def find_unused_public_names(
 def print_unused_public_names(findings: Sequence[_UnusedPublicName]) -> bool:
     print(f"## Unused public names: {len(findings)} finding(s)")
     for v in findings:
-        print(f"- {v.file}: {v.name}")
+        suffix = (
+            "(used only in this file: prefix with _)"
+            if v.used_in_file
+            else "(dead: delete it)"
+        )
+        print(f"- {v.file}: {v.name} {suffix}")
     print()
     return bool(findings)

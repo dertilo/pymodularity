@@ -127,8 +127,8 @@ def print_check_findings(
     )
 
     print(
-        f"## Cycles: {len(cycle_findings)} finding(s) across all directory "
-        + f"views, from {distinct_file_cycles} distinct file-level cycle(s)"
+        f"## Cycles: {len(cycle_findings)} in directory views, "
+        + f"{distinct_file_cycles} at file level"
     )
     if cycle_findings:
         print(

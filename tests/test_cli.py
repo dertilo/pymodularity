@@ -215,6 +215,26 @@ def test_two_sibling_directories_cycle_detected(tmp_path: Path) -> None:
     assert "sib1, sib2" in result.stdout or "sib2, sib1" in result.stdout
 
 
+def test_cycle_header_directory_only_cycle(tmp_path: Path) -> None:
+    """2 directories cycle only once merged into directory nodes -- no
+    pair of files imports each other directly -- so the new header must
+    report 0 at file level and 1 in directory views, not a contradiction
+    like the old "N finding(s) ... from 0 distinct file-level cycle(s)"
+    wording. Catches a header that still conflates the two counts."""
+    write(tmp_path / "pyproject.toml", '[project]\nname = "cyc"\nversion = "0"\n')
+    write(tmp_path / "dir_a/__init__.py", "")
+    write(tmp_path / "dir_a/a1.py", "from dir_b.b1 import x\n")
+    write(tmp_path / "dir_a/a2.py", "x = 1\n")
+    write(tmp_path / "dir_b/__init__.py", "")
+    write(tmp_path / "dir_b/b1.py", "x = 1\n")
+    write(tmp_path / "dir_b/b2.py", "from dir_a.a2 import x\n")
+
+    result = run_check(tmp_path)
+
+    assert result.returncode == 1
+    assert "## Cycles: 1 in directory views, 0 at file level" in result.stdout
+
+
 def test_no_findings_exits_zero(tmp_path: Path) -> None:
     """A clean repo (no cycle, no private-module violation) must exit 0.
     Catches an implementation that always reports a finding regardless of

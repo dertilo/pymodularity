@@ -162,6 +162,7 @@ def _run_check(repo: Path, run_deps: bool) -> int:
         graph.edge_names,
         graph.defined_names,
         graph.registered_names,
+        graph.loaded_names,
     )
     unused_finding = print_unused_public_names(unused_names)
 
