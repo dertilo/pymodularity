@@ -133,6 +133,14 @@ def _disambiguate(
         uniq[(entry.comp, entry.path)] = entry.is_namespace_dir
     entries = [_SuffixEntry(comp, path, isd) for (comp, path), isd in uniq.items()]
 
+    # Python prefers a regular package/module over a namespace-package
+    # directory portion, wherever on the path the two sit: if any candidate
+    # here is a real .py module or an __init__.py package, drop the
+    # namespace-dir candidates before scoring.
+    regular = [e for e in entries if not e.is_namespace_dir]
+    if regular:
+        entries = regular
+
     scored: list[_ScoredCandidate] = []
     for entry in entries:
         root = entry.comp[: len(entry.comp) - len(suf)]
