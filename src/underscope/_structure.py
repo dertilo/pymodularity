@@ -1,14 +1,13 @@
 """The structure-limit rules (file size, directory fan-out, package size,
-public top-level-name count per file) and the unused-public-name rule
-`underscope check` enforces. All limits are fixed constants, no config, no
-baseline. Imported only by `cli`."""
+public top-level-name count per file) `underscope check` enforces. All
+limits are fixed constants, no config, no baseline. Imported only by
+`cli`."""
 
 from collections.abc import Mapping, Sequence
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 from pathlib import Path
 
-from underscope._parse.graph import EdgeNames
 from underscope._parse.packages import find_package_roots
 
 _MAX_FILE_LINES = 500
@@ -16,9 +15,8 @@ _MAX_DIR_ENTRIES = 10
 _MAX_PACKAGE_FILES = 100
 _MAX_PUBLIC_NAMES = 15
 
-# __init__.py and __main__.py don't count as directory entries (rule 2) and
-# are exempt from the unused-public-name rule (rule 5); every other scanned
-# file counts fully for every rule.
+# __init__.py and __main__.py don't count as directory entries (rule 2);
+# every other scanned file counts fully for every rule.
 _STRUCTURAL_FILES = frozenset({"__init__.py", "__main__.py"})
 
 
@@ -168,57 +166,3 @@ def print_structure_findings(findings: _StructureFindings) -> bool:
         print(f"- {v.file}: {v.names} public names (limit {_MAX_PUBLIC_NAMES})")
     print()
     return total > 0
-
-
-@dataclass(frozen=True, slots=True)
-class _UnusedPublicName:
-    file: Path
-    name: str
-    used_in_file: bool
-
-
-def find_unused_public_names(
-    py_files: Sequence[Path],
-    repo: Path,
-    edge_names: EdgeNames,
-    defined_names: Mapping[Path, frozenset[str]],
-    registered_names: Mapping[Path, frozenset[str]],
-    loaded_names: Mapping[Path, frozenset[str]],
-) -> tuple[_UnusedPublicName, ...]:
-    out: list[_UnusedPublicName] = []
-    for f in py_files:
-        rel = f.relative_to(repo)
-        if rel.name in _STRUCTURAL_FILES:
-            continue
-        edges_to_f = [
-            (importer, names)
-            for (importer, target), names in edge_names.items()
-            if target == rel
-        ]
-        if not edges_to_f:
-            continue  # no scanned file imports this one at all: exempt
-        if any(len(names) == 0 for _, names in edges_to_f):
-            continue  # imported as a whole module somewhere: all names used
-        used: set[str] = set()
-        for _, names in edges_to_f:
-            used.update(names)
-        registered = registered_names.get(rel, frozenset())
-        loaded_here = loaded_names.get(rel, frozenset())
-        for name in defined_names.get(rel, frozenset()):
-            if _is_public(name) and name not in used and name not in registered:
-                out.append(_UnusedPublicName(rel, name, name in loaded_here))
-    out.sort(key=lambda v: (str(v.file), v.name))
-    return tuple(out)
-
-
-def print_unused_public_names(findings: Sequence[_UnusedPublicName]) -> bool:
-    print(f"## Unused public names: {len(findings)} finding(s)")
-    for v in findings:
-        suffix = (
-            "(used only in this file: prefix with _)"
-            if v.used_in_file
-            else "(dead: delete it)"
-        )
-        print(f"- {v.file}: {v.name} {suffix}")
-    print()
-    return bool(findings)

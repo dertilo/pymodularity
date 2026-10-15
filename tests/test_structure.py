@@ -1,6 +1,5 @@
 """Tests for the structure-limit rules (file size, directory fan-out,
-package size, file width) and the unused-public-name rule, run on
-synthetic tmp_path repos, offline.
+package size, file width), run on synthetic tmp_path repos, offline.
 
 Run: `pytest tests/test_structure.py`.
 """
@@ -100,8 +99,8 @@ def test_file_width_violation(tmp_path: Path) -> None:
 def test_file_width_decorated_functions_exempt(tmp_path: Path) -> None:
     """16 decorated public functions plus 1 plain undecorated one stays
     under the 15-name limit: the decorated ones don't count. Catches an
-    implementation that exempts decorated names from the unused-name rule
-    but forgets to also exempt them from the width count."""
+    implementation that forgets to exempt decorator-registered names from
+    the width count."""
     handlers = "\n\n\n".join(f"@route\ndef h{i}():\n    pass" for i in range(16))
     write(
         tmp_path / "wide.py",
@@ -126,148 +125,3 @@ def test_file_width_decorated_class_still_counts(tmp_path: Path) -> None:
 
     assert result.returncode == 1
     assert "wide.py: 16 public names (limit 15)" in result.stdout
-
-
-def test_unused_public_name_violation(tmp_path: Path) -> None:
-    """A public top-level name no scanned file imports is a finding.
-    Catches an implementation that never checks usage at all."""
-    write(tmp_path / "a.py", "def used():\n    pass\n\n\ndef unused():\n    pass\n")
-    write(tmp_path / "b.py", "from a import used\n")
-
-    result = run_check(tmp_path, extra_args=("--no-deps",))
-
-    assert result.returncode == 1
-    assert "a.py: unused" in result.stdout
-    assert "a.py: used" not in result.stdout
-
-
-def test_unused_public_name_exempt_no_importer(tmp_path: Path) -> None:
-    """A file no scanned file imports at all (a script/entry point) is
-    exempt entirely, even though its public names are technically
-    unused. Catches an implementation that flags every public name in
-    every file regardless of whether the file itself is ever imported."""
-    write(tmp_path / "script.py", "def main():\n    pass\n")
-
-    result = run_check(tmp_path, extra_args=("--no-deps",))
-
-    assert result.returncode == 0
-    assert "Unused public names: 0 finding(s)" in result.stdout
-
-
-def test_unused_public_name_exempt_dunder_files(tmp_path: Path) -> None:
-    """`__init__.py` is exempt from the unused-public-name rule even
-    though it is imported (as a package) and re-exports a name no other
-    file uses by that name."""
-    write(tmp_path / "pkg" / "__init__.py", "def reexported():\n    pass\n")
-    write(tmp_path / "use.py", "from pkg import reexported\n")
-
-    result = run_check(tmp_path, extra_args=("--no-deps",))
-
-    assert result.returncode == 0
-    assert "Unused public names: 0 finding(s)" in result.stdout
-
-
-def test_unused_public_name_exempt_whole_module_import(tmp_path: Path) -> None:
-    """A file imported as a whole module (`import a.b`, an edge with no
-    specific names) has all its public names treated as used, even an
-    otherwise-never-named one. Catches an implementation that only
-    checks whether *some* name was imported, not whether the import was
-    a whole-module one."""
-    write(tmp_path / "a" / "__init__.py", "")
-    write(tmp_path / "a" / "b.py", "def never_named():\n    pass\n")
-    write(tmp_path / "use.py", "import a.b\n")
-
-    result = run_check(tmp_path, extra_args=("--no-deps",))
-
-    assert result.returncode == 0
-    assert "Unused public names: 0 finding(s)" in result.stdout
-
-
-def test_unused_public_name_tests_dont_count_as_importers(tmp_path: Path) -> None:
-    """A test file is not scanned at all, so a name only reached from a
-    test has zero scanned importers and falls through to the "no
-    scanned file imports it" exemption -- same outcome (exempt, no
-    finding) as a module no one imports, never a "used" verdict.
-    Catches an implementation that walks the filesystem for importers
-    instead of using the already-filtered scanned edge graph, and would
-    wrongly count the test import as usage."""
-    write(tmp_path / "a.py", "def only_tested():\n    pass\n")
-    write(tmp_path / "test_a.py", "from a import only_tested\n")
-
-    result = run_check(tmp_path, extra_args=("--no-deps",))
-
-    assert result.returncode == 0
-    assert "Unused public names: 0 finding(s)" in result.stdout
-
-
-def test_unused_public_name_decorator_registered_exempt(tmp_path: Path) -> None:
-    """A decorator-registered function (e.g. a FastAPI route handler) is
-    exempt from the unused-public-name rule: a framework derives its
-    contract from the function's name, so renaming it with a `_` prefix
-    isn't a safe fix. An undecorated unimported neighbour in the same
-    file is still flagged, to catch an implementation that exempts the
-    whole file instead of just registered names."""
-    write(
-        tmp_path / "a.py",
-        "def route(f):\n    return f\n\n\n"
-        + "@route\ndef handler():\n    pass\n\n\n"
-        + "def unused_plain():\n    pass\n",
-    )
-    write(tmp_path / "b.py", "from a import route\n")
-
-    result = run_check(tmp_path, extra_args=("--no-deps",))
-
-    assert result.returncode == 1
-    assert "a.py: handler" not in result.stdout
-    assert "a.py: unused_plain" in result.stdout
-
-
-def test_unused_public_name_local_only_suffix(tmp_path: Path) -> None:
-    """A public Protocol used only as a field annotation in its own file
-    (an `ast.Name` Load elsewhere in the file, e.g. the dataclass field's
-    type) -- never imported anywhere -- gets the "used only in this
-    file" suffix, not "dead", since deleting it would break the
-    annotation. Catches an implementation that only checks defined vs.
-    imported and ignores same-file usage."""
-    write(
-        tmp_path / "a.py",
-        "from typing import Protocol\n\n\n"
-        + "class Embedder(Protocol):\n    def embed(self, x: str) -> list[float]: ...\n\n\n"
-        + "class Config:\n    embedder: Embedder\n",
-    )
-    write(tmp_path / "b.py", "from a import Config\n")
-
-    result = run_check(tmp_path, extra_args=("--no-deps",))
-
-    assert result.returncode == 1
-    assert "a.py: Embedder (used only in this file: prefix with _)" in result.stdout
-
-
-def test_unused_public_name_dead_suffix(tmp_path: Path) -> None:
-    """A public function referenced nowhere, not even inside its own
-    file, gets the "dead" suffix. Catches an implementation that always
-    prints one suffix regardless of same-file usage."""
-    write(tmp_path / "a.py", "def used():\n    pass\n\n\ndef dead_fn():\n    pass\n")
-    write(tmp_path / "b.py", "from a import used\n")
-
-    result = run_check(tmp_path, extra_args=("--no-deps",))
-
-    assert result.returncode == 1
-    assert "a.py: dead_fn (dead: delete it)" in result.stdout
-
-
-def test_unused_public_name_decorated_class_still_a_finding(tmp_path: Path) -> None:
-    """A decorated top-level class gets no exemption from the
-    unused-name rule (only decorated functions do -- `@dataclass` sits
-    on most models). Catches an implementation that exempts any
-    decorated def/class rather than only functions."""
-    write(
-        tmp_path / "a.py",
-        "def register(c):\n    return c\n\n\n@register\nclass Model:\n    pass\n",
-    )
-    write(tmp_path / "b.py", "from a import register\n")
-
-    result = run_check(tmp_path, extra_args=("--no-deps",))
-
-    assert result.returncode == 1
-    assert "a.py: Model" in result.stdout

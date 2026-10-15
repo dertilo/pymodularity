@@ -151,32 +151,17 @@ def _top_level_registered_names(tree: ast.Module) -> frozenset[str]:
     return frozenset(registered)
 
 
-def _names_loaded_in_file(tree: ast.Module) -> frozenset[str]:
-    """Every `ast.Name` id referenced (Load context) anywhere in the file,
-    at any nesting depth -- used to tell a dead unused-public name from one
-    only ever used inside its own file. A string annotation (e.g.
-    `"Embedder"`) is not an `ast.Name` and so doesn't count as a use; a
-    recursive function's self-call does."""
-    return frozenset(
-        node.id
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load)
-    )
-
-
 @dataclass(frozen=True, slots=True)
 class _CollectedEdges:
     """What one parse of a repo's files collects: file-level import edges
     (with their imported names), the ambiguous-import warnings raised along
-    the way, each file's top-level defined names, each file's
-    decorator-registered names (a subset of defined_names), and each file's
-    loaded (Load-context) `ast.Name` ids anywhere in the file."""
+    the way, each file's top-level defined names, and each file's
+    decorator-registered names (a subset of defined_names)."""
 
     edge_names: EdgeNames
     warnings: tuple[_AmbiguityWarning, ...]
     defined_names: Mapping[Path, frozenset[str]]
     registered_names: Mapping[Path, frozenset[str]]
-    loaded_names: Mapping[Path, frozenset[str]]
 
 
 def _collect_edges(
@@ -192,7 +177,6 @@ def _collect_edges(
     warnings: list[_AmbiguityWarning] = []
     defined_names: dict[Path, frozenset[str]] = {}
     registered_names: dict[Path, frozenset[str]] = {}
-    loaded_names: dict[Path, frozenset[str]] = {}
     for f in sorted(py_files):
         rel = f.relative_to(repo)
         try:
@@ -204,7 +188,6 @@ def _collect_edges(
 
         defined_names[rel] = _top_level_defined_names(tree)
         registered_names[rel] = _top_level_registered_names(tree)
-        loaded_names[rel] = _names_loaded_in_file(tree)
         importer_dir_parts = path_components(rel.parent)
         targets: list[_ResolvedImport] = []
         for node in ast.walk(tree):
@@ -277,7 +260,6 @@ def _collect_edges(
         tuple(warnings),
         defined_names,
         registered_names,
-        loaded_names,
     )
 
 
@@ -309,15 +291,14 @@ class _RepoGraph:
     """Every structure every subcommand needs, built once from one parse of
     `repo`: the file list, the directories holding Python code, the
     file-level import edges (and their imported names), each file's
-    top-level defined names, each file's decorator-registered names, each
-    file's loaded names, and the forward/reverse file adjacency."""
+    top-level defined names, each file's decorator-registered names, and
+    the forward/reverse file adjacency."""
 
     py_files: tuple[Path, ...]
     dirs_with_py: frozenset[Path]
     edge_names: EdgeNames
     defined_names: Mapping[Path, frozenset[str]]
     registered_names: Mapping[Path, frozenset[str]]
-    loaded_names: Mapping[Path, frozenset[str]]
     adj: Mapping[Path, frozenset[Path]]
     radj: Mapping[Path, frozenset[Path]]
 
@@ -348,7 +329,6 @@ def build_graph(repo: Path) -> _RepoGraph:
         collected.edge_names,
         collected.defined_names,
         collected.registered_names,
-        collected.loaded_names,
         file_graph.adj,
         file_graph.radj,
     )

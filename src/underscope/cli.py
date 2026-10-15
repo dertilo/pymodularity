@@ -90,12 +90,7 @@ from underscope._metrics import render_metrics
 from underscope._parse.graph import build_graph
 from underscope._parse.packages import find_package_roots
 from underscope._scores import compute_scores
-from underscope._structure import (
-    find_structure_findings,
-    find_unused_public_names,
-    print_structure_findings,
-    print_unused_public_names,
-)
+from underscope._structure import find_structure_findings, print_structure_findings
 from underscope._view_edges import build_view
 from underscope._views.render import write_view
 
@@ -156,17 +151,7 @@ def _run_check(repo: Path, run_deps: bool) -> int:
     )
     structure_finding = print_structure_findings(structure_findings)
 
-    unused_names = find_unused_public_names(
-        graph.py_files,
-        repo,
-        graph.edge_names,
-        graph.defined_names,
-        graph.registered_names,
-        graph.loaded_names,
-    )
-    unused_finding = print_unused_public_names(unused_names)
-
-    return 1 if any_finding or deps_finding or structure_finding or unused_finding else 0
+    return 1 if any_finding or deps_finding or structure_finding else 0
 
 
 def _run_graph(repo: Path, out_dir: Path, write_html: bool) -> int:
