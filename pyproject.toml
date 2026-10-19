@@ -32,3 +32,5 @@ include = ["src", "tests"]
 pythonVersion = "3.11"
 reportUnusedCallResult = false
 reportAny = false
+# tests exercise private helpers directly
+executionEnvironments = [{ root = "tests", reportPrivateUsage = false }]
