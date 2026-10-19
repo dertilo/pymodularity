@@ -1,4 +1,4 @@
-"""The dependency-declaration rule `underscope check` enforces: shells out
+"""The dependency-declaration rule `pymodularity check` enforces: shells out
 to deptry, pinned to one exact version, once per package root (a directory
 with a pyproject.toml [project] table found by `_parse.packages`), via
 `uv run --directory <pkg> --with deptry==<pin> --frozen deptry . --json-output
@@ -22,7 +22,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import cast
 
-from underscope._parse.packages import find_package_roots
+from pymodularity._parse.packages import find_package_roots
 
 _DEPTRY_VERSION = "0.25.1"
 
@@ -200,7 +200,7 @@ def run_dependency_checks(repo: Path) -> _DepsResult | UvMissing:
     skipped: list[_Skipped] = []
     failed: list[_Failed] = []
 
-    with tempfile.TemporaryDirectory(prefix="underscope_deps_") as tmp:
+    with tempfile.TemporaryDirectory(prefix="pymodularity_deps_") as tmp:
         tmp_dir = Path(tmp)
         for pkg in package_roots:
             pyproject = repo / pkg / "pyproject.toml"

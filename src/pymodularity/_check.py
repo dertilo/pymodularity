@@ -1,13 +1,13 @@
-"""The privacy rules `underscope check` enforces (the cycle ban itself
+"""The privacy rules `pymodularity check` enforces (the cycle ban itself
 lives in `_cycles`), and the printing of all check findings."""
 
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from underscope._cycles import CycleFinding
-from underscope._parse.graph import EdgeNames
-from underscope._parse.names import is_private_name, module_comp
+from pymodularity._cycles import CycleFinding
+from pymodularity._parse.graph import EdgeNames
+from pymodularity._parse.names import is_private_name, module_comp
 
 
 def _owning_package_root(rel: Path, package_roots: Sequence[Path]) -> Path:

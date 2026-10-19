@@ -15,7 +15,7 @@ def run_check(
     repo: Path, extra_args: tuple[str, ...] = ()
 ) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        [sys.executable, "-m", "underscope", "check", str(repo), *extra_args],
+        [sys.executable, "-m", "pymodularity", "check", str(repo), *extra_args],
         capture_output=True,
         text=True,
         check=False,

@@ -1,4 +1,4 @@
-"""underscope: see and check a repo's real Python imports.
+"""pymodularity: see and check a repo's real Python imports.
 
 Build one whole-repo Python import graph with ast (stdlib only) and
 render it as mermaid views, one per directory, with a markdown link list
@@ -27,12 +27,12 @@ other's edits. Never read a missing edge as independence.
 
 Three subcommands:
 
-`underscope graph <repo> --out DIR [--html]` writes the views under DIR.
+`pymodularity graph <repo> --out DIR [--html]` writes the views under DIR.
 `--html` also writes an index.html per view (mermaid diagram, clickable
 directory nodes) alongside index.md; the browser needs network access to
 load mermaid from a CDN.
 
-`underscope check <repo>` runs five convention checks and prints findings
+`pymodularity check <repo>` runs five convention checks and prints findings
 to stdout, exit 1 on any finding: (1) no import cycles, at every directory
 level (any SCC with more than 1 node in any directory's view, computed the
 same way the view's own Cycles section is, TYPE_CHECKING and
@@ -70,7 +70,7 @@ file imports (a file no scanned file imports at all, `__init__.py` and
 `__main__.py`, and a name reachable through a whole-module import, are all
 exempt).
 
-`underscope metrics <repo>` prints a coupling report to stdout on the same
+`pymodularity metrics <repo>` prints a coupling report to stdout on the same
 file graph (reach and score per file and per directory, interface width
 per file and per directory, exposure share, entry files, misplaced files)
 and always exits 0: it is a report, never a gate."""
@@ -79,20 +79,20 @@ import argparse
 import sys
 from pathlib import Path
 
-from underscope._check import (
+from pymodularity._check import (
     find_name_violations,
     find_privacy_violations,
     print_check_findings,
 )
-from underscope._cycles import count_file_level_cycles, find_all_cycle_findings
-from underscope._deps import UvMissing, print_deps_findings, run_dependency_checks
-from underscope._metrics import render_metrics
-from underscope._parse.graph import build_graph
-from underscope._parse.packages import find_package_roots
-from underscope._scores import compute_scores
-from underscope._structure import find_structure_findings, print_structure_findings
-from underscope._view_edges import build_view
-from underscope._views.render import write_view
+from pymodularity._cycles import count_file_level_cycles, find_all_cycle_findings
+from pymodularity._deps import UvMissing, print_deps_findings, run_dependency_checks
+from pymodularity._metrics import render_metrics
+from pymodularity._parse.graph import build_graph
+from pymodularity._parse.packages import find_package_roots
+from pymodularity._scores import compute_scores
+from pymodularity._structure import find_structure_findings, print_structure_findings
+from pymodularity._view_edges import build_view
+from pymodularity._views.render import write_view
 
 __version__ = "0.1.0"
 
@@ -115,7 +115,7 @@ class _MetricsArgs(argparse.Namespace):
 
 
 def _run_check(repo: Path, run_deps: bool) -> int:
-    """`underscope check <repo>`: the import-cycle, privacy-convention and
+    """`pymodularity check <repo>`: the import-cycle, privacy-convention and
     (unless `--no-deps`) dependency-declaration checks, findings printed to
     stdout, exit 1 on any finding, no views written."""
     graph = build_graph(repo)
@@ -155,7 +155,7 @@ def _run_check(repo: Path, run_deps: bool) -> int:
 
 
 def _run_graph(repo: Path, out_dir: Path, write_html: bool) -> int:
-    """`underscope graph <repo> --out DIR [--html]`: writes one mermaid
+    """`pymodularity graph <repo> --out DIR [--html]`: writes one mermaid
     view per directory under DIR."""
     out_dir.mkdir(parents=True, exist_ok=True)
     graph = build_graph(repo)
@@ -182,7 +182,7 @@ def _run_graph(repo: Path, out_dir: Path, write_html: bool) -> int:
 
 
 def _run_metrics(repo: Path) -> int:
-    """`underscope metrics <repo>`: prints a coupling report to stdout,
+    """`pymodularity metrics <repo>`: prints a coupling report to stdout,
     always exits 0."""
     graph = build_graph(repo)
     scores = compute_scores(graph.dirs_with_py, graph.adj, graph.radj)
@@ -205,13 +205,13 @@ def _run_metrics(repo: Path) -> int:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        prog="underscope",
+        prog="pymodularity",
         description="Check and measure a Python repo's imports: no import cycles, "
         + "underscore privacy scoped like Rust's pub(super)/pub(crate), coupling metrics.",
         epilog="Rules, metrics and blind spots: https://github.com/dertilo/underscope",
     )
     parser.add_argument(
-        "--version", action="version", version=f"underscope {__version__}"
+        "--version", action="version", version=f"pymodularity {__version__}"
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 

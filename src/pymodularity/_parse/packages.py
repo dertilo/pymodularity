@@ -6,7 +6,7 @@ import os
 import tomllib
 from pathlib import Path
 
-from underscope._parse.graph import should_skip_dir
+from pymodularity._parse.graph import should_skip_dir
 
 
 def _has_project_table(pyproject: Path) -> bool:

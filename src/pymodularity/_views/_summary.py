@@ -7,11 +7,11 @@ from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 from pathlib import Path
 
-from underscope._cycles import compute_sccs
-from underscope._parse.graph import EdgeKey, EdgeNames
-from underscope._parse.names import is_private_name
-from underscope._scores import DirScore, FileScore
-from underscope._view_edges import PairEdges
+from pymodularity._cycles import compute_sccs
+from pymodularity._parse.graph import EdgeKey, EdgeNames
+from pymodularity._parse.names import is_private_name
+from pymodularity._scores import DirScore, FileScore
+from pymodularity._view_edges import PairEdges
 
 
 @dataclass(frozen=True, slots=True)

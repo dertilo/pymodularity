@@ -1,4 +1,4 @@
-"""Tests for `underscope`'s subcommands, run on synthetic tmp_path repos.
+"""Tests for `pymodularity`'s subcommands, run on synthetic tmp_path repos.
 
 Uses tmp_path fixtures: the checks and metrics (cycle detection via SCCs,
 the underscore-privacy convention, transitive reach, interface width) are
@@ -22,7 +22,7 @@ def run_check(
     env: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        [sys.executable, "-m", "underscope", "check", str(repo), *extra_args],
+        [sys.executable, "-m", "pymodularity", "check", str(repo), *extra_args],
         capture_output=True,
         text=True,
         check=False,
@@ -33,7 +33,7 @@ def run_check(
 
 def run_metrics(repo: Path) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        [sys.executable, "-m", "underscope", "metrics", str(repo)],
+        [sys.executable, "-m", "pymodularity", "metrics", str(repo)],
         capture_output=True,
         text=True,
         check=False,
@@ -47,7 +47,7 @@ def run_graph(
     args = [
         sys.executable,
         "-m",
-        "underscope",
+        "pymodularity",
         "graph",
         str(repo),
         "--out",
@@ -579,7 +579,7 @@ def test_parse_deptry_json_handles_null_line() -> None:
     """A deptry JSON finding with line/column null (deptry reports this for
     some finding kinds) must parse to the "no position" case, not crash or
     silently coerce null to 0."""
-    from underscope._deps import _DepsResult, _parse_deptry_json, print_deps_findings
+    from pymodularity._deps import _DepsResult, _parse_deptry_json, print_deps_findings
 
     raw = """
     [

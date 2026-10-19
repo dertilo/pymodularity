@@ -1,5 +1,5 @@
 [project]
-name = "underscope"
+name = "pymodularity"
 version = "0.1.0"
 description = "See and check a repo's real Python imports: a privacy convention on PEP 8 underscores, an import-cycle ban, and a coupling report, all derived from the code."
 readme = "README.md"
@@ -14,7 +14,7 @@ Repository = "https://github.com/dertilo/underscope"
 Issues = "https://github.com/dertilo/underscope/issues"
 
 [project.scripts]
-underscope = "underscope.cli:main"
+pymodularity = "pymodularity.cli:main"
 
 [dependency-groups]
 dev = ["pytest", "ruff", "basedpyright"]

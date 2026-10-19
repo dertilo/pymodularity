@@ -34,5 +34,5 @@ jobs:
       - name: pytest
         run: uv run pytest
 
-      - name: underscope check (on its own source)
-        run: uv run underscope check .
+      - name: pymodularity check (on its own source)
+        run: uv run pymodularity check .

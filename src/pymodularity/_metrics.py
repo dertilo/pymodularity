@@ -1,14 +1,14 @@
 """The 4 coupling analyses beyond reach/scores (interface width, exposure
 share, entry files, misplaced files), and `render_metrics`, the printer
-for all 5 of `underscope metrics`'s sections."""
+for all 5 of `pymodularity metrics`'s sections."""
 
 from collections.abc import Mapping
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 from pathlib import Path
 
-from underscope._parse.graph import EdgeNames
-from underscope._scores import DirScore, FileScore, ancestor_dirs
+from pymodularity._parse.graph import EdgeNames
+from pymodularity._scores import DirScore, FileScore, ancestor_dirs
 
 
 @dataclass(frozen=True, slots=True)

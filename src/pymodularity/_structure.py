@@ -1,5 +1,5 @@
 """The structure-limit rules (file size, directory fan-out, package size,
-public top-level-name count per file) `underscope check` enforces. All
+public top-level-name count per file) `pymodularity check` enforces. All
 limits are fixed constants, no config, no baseline. Imported only by
 `cli`."""
 
@@ -8,7 +8,7 @@ from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 from pathlib import Path
 
-from underscope._parse.packages import find_package_roots
+from pymodularity._parse.packages import find_package_roots
 
 _MAX_FILE_LINES = 500
 _MAX_DIR_ENTRIES = 10
