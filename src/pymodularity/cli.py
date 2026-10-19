@@ -208,7 +208,7 @@ def main() -> int:
         prog="pymodularity",
         description="Check and measure a Python repo's imports: no import cycles, "
         + "underscore privacy scoped like Rust's pub(super)/pub(crate), coupling metrics.",
-        epilog="Rules, metrics and blind spots: https://github.com/dertilo/underscope",
+        epilog="Rules, metrics and blind spots: https://github.com/dertilo/pymodularity",
     )
     parser.add_argument(
         "--version", action="version", version=f"pymodularity {__version__}"

@@ -9,9 +9,9 @@ authors = [{ name = "Tilo Himmelsbach" }]
 dependencies = []
 
 [project.urls]
-Homepage = "https://github.com/dertilo/underscope"
-Repository = "https://github.com/dertilo/underscope"
-Issues = "https://github.com/dertilo/underscope/issues"
+Homepage = "https://github.com/dertilo/pymodularity"
+Repository = "https://github.com/dertilo/pymodularity"
+Issues = "https://github.com/dertilo/pymodularity/issues"
 
 [project.scripts]
 pymodularity = "pymodularity.cli:main"
