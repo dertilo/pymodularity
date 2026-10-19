@@ -94,7 +94,7 @@ from pymodularity._structure import find_structure_findings, print_structure_fin
 from pymodularity._view_edges import build_view
 from pymodularity._views.render import write_view
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 
 class _CheckArgs(argparse.Namespace):
