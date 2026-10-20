@@ -1,0 +1,40 @@
+// Gap cases that draw an edge (G1, G2, G3, G5). M/A cases live in
+// privacy_modules.dot, N cases in privacy_names.dot.
+// Render: dot -Tpng -Gdpi=150 gaps.dot -o gaps.png
+digraph gaps {
+  rankdir=LR;
+  node [shape=box, fontname="Helvetica", fontsize=11];
+  graph [fontname="Helvetica", fontsize=11];
+  edge [fontname="Helvetica", fontsize=10];
+
+  subgraph cluster_catalog_pkg {
+    label="catalog/catalog/gaps";
+    style=dashed;
+
+    box_py [label="box.py"];
+    g1_py [label="g1_instance_attr.py"];
+    g2_py [label="g2_dynamic_access.py"];
+    mod_g2_py [label="mod_g2.py"];
+    g3_py [label="g3_shadowing.py"];
+
+    subgraph cluster_collide {
+      label="collide";
+      style=solid;
+      client_g5_py [label="client_g5.py"];
+      subgraph cluster_collide_requests {
+        label="requests  (owner)";
+        style=filled; fillcolor="#fff6cc";
+        queue_py [label="_queue.py", style=bold];
+      }
+    }
+  }
+
+  // G1: missed, instance-attribute access hides the finding
+  g1_py -> box_py [label="G1 _y (missed)", color=grey40, style=dashed];
+  // G2: missed, getattr() dynamic access hides the finding
+  g2_py -> mod_g2_py [label="G2 _x (missed)", color=grey40, style=dashed];
+  // G3: missed, parameter shadowing hides the finding
+  g3_py -> mod_g2_py [label="G3 _x (missed)", color=grey40, style=dashed];
+  // G5: false finding, local dir collides with third-party package name
+  client_g5_py -> queue_py [label="G5 (false finding)", color=orange];
+}

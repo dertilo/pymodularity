@@ -26,9 +26,12 @@ build-backend = "uv_build"
 [tool.ruff]
 line-length = 90
 target-version = "py311"
+# a static fixture repo, not real project code: committed golden-test input
+exclude = ["tests/showcase"]
 
 [tool.basedpyright]
 include = ["src", "tests"]
+exclude = ["tests/showcase"]
 pythonVersion = "3.11"
 reportUnusedCallResult = false
 reportAny = false

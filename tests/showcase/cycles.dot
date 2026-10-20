@@ -1,0 +1,74 @@
+// Cycle cases C1-C5. Render: dot -Tpng -Gdpi=150 cycles.dot -o cycles.png
+digraph cycles {
+  rankdir=LR;
+  node [shape=box, fontname="Helvetica", fontsize=11];
+  graph [fontname="Helvetica", fontsize=11];
+  edge [fontname="Helvetica", fontsize=10];
+
+  subgraph cluster_billing {
+    label="billing/billing";
+    style=dashed;
+
+    subgraph cluster_orders {
+      label="orders  (C1)";
+      style=solid;
+      a_py [label="a.py"];
+      b_py [label="b.py"];
+    }
+    subgraph cluster_shipping {
+      label="shipping  (C2)";
+      style=solid;
+      dispatch_py [label="dispatch.py"];
+      label_py [label="label.py"];
+    }
+    subgraph cluster_returns {
+      label="returns  (C2)";
+      style=solid;
+      tracker_py [label="tracker.py"];
+      refund_py [label="refund.py"];
+    }
+    subgraph cluster_invoicing {
+      label="invoicing  (C3)";
+      style=solid;
+      ledger_py [label="ledger.py"];
+      statement_py [label="statement.py"];
+    }
+    subgraph cluster_pricing_b {
+      label="pricing  (C4)";
+      style=solid;
+      discount_py [label="discount.py"];
+      quote_py [label="quote.py"];
+    }
+  }
+
+  subgraph cluster_catalog {
+    label="catalog/catalog  (C5)";
+    style=dashed;
+    stock_link_py [label="stock_link.py"];
+  }
+  subgraph cluster_warehouse {
+    label="warehouse/warehouse  (C5)";
+    style=dashed;
+    inventory_py [label="inventory.py"];
+  }
+
+  // C1: direct 2-file cycle
+  a_py -> b_py [label="C1", color=red];
+  b_py -> a_py [label="C1", color=red];
+
+  // C2: directory-level cycle only, no file-level cycle
+  dispatch_py -> refund_py [label="C2", color=red];
+  tracker_py -> label_py [label="C2", color=red];
+
+  // C3: cycle closes only under TYPE_CHECKING
+  statement_py -> ledger_py [label="C3", color=red];
+  ledger_py -> statement_py [label="C3 (TYPE_CHECKING)", color=red, style=dotted];
+
+  // C4: cycle closes only inside a function body
+  quote_py -> discount_py [label="C4", color=red];
+  discount_py -> quote_py [label="C4 (in function)", color=red, style=dotted];
+
+  // C5: cross-package-root cycle
+  stock_link_py -> inventory_py [label="C5", color=red];
+  inventory_py -> stock_link_py [label="C5", color=red];
+}

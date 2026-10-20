@@ -186,7 +186,7 @@ def _disambiguate(
     if not non_package_root:
         return _Unresolved()
 
-    return Ambiguous(tuple(s.path for s in non_package_root))
+    return Ambiguous(tuple(sorted(s.path for s in non_package_root)))
 
 
 def resolve_exact(

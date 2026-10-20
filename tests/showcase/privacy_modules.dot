@@ -1,0 +1,100 @@
+// Module/attribute privacy cases M1-M5, A1-A4, A6. N1-N3 and A5 (name
+// privacy) live in privacy_names.dot; G1/G2/G3/G5 (import-drawing gap
+// cases) live in gaps.dot.
+// Render: dot -Tpng -Gdpi=150 privacy_modules.dot -o privacy_modules.png
+digraph privacy_modules {
+  rankdir=LR;
+  node [shape=box, fontname="Helvetica", fontsize=11];
+  graph [fontname="Helvetica", fontsize=11];
+  edge [fontname="Helvetica", fontsize=10];
+
+  subgraph cluster_warehouse {
+    label="warehouse/warehouse (package root)";
+    style=dashed;
+    m4_uses_py [label="m4_uses.py"];
+    m5_uses_py [label="m5_uses.py"];
+  }
+
+  subgraph cluster_catalog_pkg {
+    label="catalog/catalog  (owner of _internal/)";
+    style=dashed;
+
+    subgraph cluster_catalog_internal {
+      label="_internal";
+      style=solid;
+      _internal_tax [label="tax.py", style=bold];
+    }
+
+    subgraph cluster_privacy {
+      label="privacy";
+      style=solid;
+
+      parent_peek [label="parent_peek.py"];
+
+      subgraph cluster_pricing {
+        label="pricing  (owner of _pricing.py)";
+        style=filled; fillcolor="#fff6cc";
+        calculator_py [label="calculator.py"];
+        pricing_py [label="_pricing.py", style=bold];
+        subgraph cluster_pricing_sub {
+          label="sub";
+          style=solid;
+          deep_py [label="deep.py"];
+        }
+      }
+
+      subgraph cluster_sibling_dir {
+        label="sibling_dir";
+        style=solid;
+        peek_py [label="peek.py"];
+      }
+
+      subgraph cluster_attrs_demo {
+        label="attrs_demo  (owner of _internal/)";
+        style=filled; fillcolor="#fff6cc";
+        subgraph cluster_attrs_demo_sub {
+          label="sub";
+          style=solid;
+          mod_py [label="mod.py  (_x)", style="filled,bold", fillcolor="#fff6cc"];
+        }
+        subgraph cluster_attrs_demo_internal {
+          label="_internal";
+          style=solid;
+          internal_init [label="__init__.py", style=bold];
+          x_py [label="x.py", style=bold];
+        }
+      }
+
+      subgraph cluster_attr_importers {
+        label="attr_importers";
+        style=solid;
+        importer_a1_py [label="importer_a1.py"];
+        importer_a2_py [label="importer_a2.py"];
+        importer_a3_py [label="importer_a3.py"];
+        importer_a4_py [label="importer_a4.py"];
+        importer_a6_py [label="importer_a6.py"];
+      }
+    }
+  }
+
+  // M1: allowed, same dir / descendant dir
+  calculator_py -> pricing_py [label="M1", color=green];
+  deep_py -> pricing_py [label="M1", color=green];
+  // M2: finding, sibling dir
+  peek_py -> pricing_py [xlabel="M2", color=red];
+  // M3: finding, parent dir
+  parent_peek -> pricing_py [label="M3", color=red];
+  // M4: finding, other package root
+  m4_uses_py -> pricing_py [label="M4", color=red];
+  // M5: finding, other package root, package-root-level private dir
+  m5_uses_py -> _internal_tax [label="M5", color=red];
+
+  // A1-A3, A6: finding, attribute-form access to mod.py's _x
+  importer_a1_py -> mod_py [label="A1 _x", color=red];
+  importer_a2_py -> mod_py [label="A2 _x", color=red];
+  importer_a3_py -> mod_py [label="A3 _x", color=red];
+  importer_a6_py -> mod_py [label="A6 _x", color=red];
+  // A4: finding, attribute chain through _internal package to x.py
+  importer_a4_py -> internal_init [label="A4", color=red];
+  importer_a4_py -> x_py [label="A4", color=red];
+}

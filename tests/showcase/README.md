@@ -1,0 +1,77 @@
+# `tests/showcase/`
+
+A small static monorepo — committed code, not generated at test time — that
+demonstrates every rule `pymodularity check` enforces and its documented
+blind spots. It serves two purposes: a reader can browse it case by case,
+and `tests/test_showcase.py` runs `check --no-deps` on it and diffs stdout
+and stderr against `expected_check.txt`/`expected_stderr.txt`, a golden
+test for the whole rule set at once.
+
+3 package roots stand in for 3 services of a toy bookstore: `catalog/`,
+`billing/`, `warehouse/`. Every case's code carries a `# <ID>` comment at
+its first line (or inline on the triggering statement).
+
+## Diagrams
+
+Directories are nested boxes mirroring the real tree. The shaded box is
+the owner: a directory for private modules and `__init__.py` names, the
+file itself for a private name in a regular file; it is labelled "owner
+of ...". Files are plain boxes, the private target is bold-bordered.
+Edge colour: green = allowed, red = finding, grey dashed = missed (a
+documented gap), orange = false finding (G5), red dotted = counts as a
+finding but via a special import kind (TYPE_CHECKING-only or in-function
+import). Edge labels carry the case ID and, for name cases, the private
+name. S cases are table-only (no edge to draw). Re-render with
+`dot -Tpng -Gdpi=150 <name>.dot -o <name>.png` from this directory.
+
+Module/attribute privacy (M1-M5, A1-A4, A6):
+
+![privacy (module/attribute cases)](privacy_modules.png)
+
+Name privacy (N1-N3, A5):
+
+![privacy (name cases)](privacy_names.png)
+
+Gaps that draw an edge (G1, G2, G3, G5):
+
+![gaps](gaps.png)
+
+Import cycles (C1-C5):
+
+![cycles](cycles.png)
+
+| ID | File(s) | Expected | Why |
+|----|---------|----------|-----|
+| C1 | `billing/billing/orders/{a,b}.py` | finding | 2 files import each other directly. |
+| C2 | `billing/billing/{shipping,returns}/*.py` | finding (directory level only) | `shipping/dispatch.py` and `returns/tracker.py` each import a *different* file in the other directory, so the 2 directories form an SCC in their parent's view, but no single file sits in a loop — no file-level cycle. |
+| C3 | `billing/billing/invoicing/{statement,ledger}.py` | finding | `ledger.py` imports `statement.py` back only under `if TYPE_CHECKING:`; still counted. |
+| C4 | `billing/billing/pricing/{quote,discount}.py` | finding | `discount.py` imports `quote.py` back only inside a function body; still counted. |
+| C5 | `catalog/catalog/stock_link.py`, `warehouse/warehouse/inventory.py` | finding | a cycle across 2 package roots; the cycle ban is repo-wide, not per package. |
+| M1 | `catalog/catalog/privacy/pricing/{calculator.py,sub/deep.py}` | allowed | both import `_pricing.py` from its own directory or a descendant of it. |
+| M2 | `catalog/catalog/privacy/sibling_dir/peek.py` | finding | imports `_pricing.py` from a sibling directory of its owner. |
+| M3 | `catalog/catalog/privacy/parent_peek.py` | finding | imports `_pricing.py` from `pricing/`'s parent directory. |
+| M4 | `warehouse/warehouse/m4_uses.py` | finding | imports `_pricing.py` from another package root entirely. |
+| M5 | `warehouse/warehouse/m5_uses.py` | finding | `catalog/catalog/_internal/` sits directly under the `catalog` package root, so its scope is the whole package; only a different root reaching in is a finding (an importer elsewhere inside `catalog` would be allowed). |
+| N1 | `catalog/catalog/privacy/receipts/{invoice,other}.py` | finding | `_fmt` is private to `invoice.py` alone (a single-file owner); even a sibling in the same directory may not import it. |
+| N2 | `catalog/catalog/privacy/discounts/apply.py` | allowed | imports `_x` from `discounts/__init__.py` while living under `discounts/`. |
+| N3 | `catalog/catalog/privacy/parent_peek.py` | finding | imports the same `_x` from outside `discounts/`. |
+| A1 | `catalog/catalog/privacy/attr_importers/importer_a1.py` | finding | `import a.b.mod` then `a.b.mod._x`. |
+| A2 | `.../importer_a2.py` | finding | `import a.b.mod as m` then `m._x`. |
+| A3 | `.../importer_a3.py` | finding | `from a.b import mod` then `mod._x`. |
+| A4 | `.../importer_a4.py` | finding (2 findings, same case) | `import a as ad` then `ad._internal.x.f()`: the attribute chain visits both the private package `_internal` and its submodule `x`, each reported once. |
+| A5 | `catalog/catalog/privacy/discounts/apply.py` (allowed), `catalog/catalog/privacy/outsider_a5.py` (finding) | both | `pkg._x` with `_x` from `__init__.py`: allowed under the owning directory, a finding from outside it. |
+| A6 | `.../importer_a6.py` | finding (exactly 1) | `from a.b.mod import _x` plus `a.b.mod._x` in the same file; the attribute-form hit on the same (importer, target, name) is deduplicated against the import-form one. |
+| S1 | `catalog/catalog/structure/big_file.py` | finding | 501 physical lines, 1 over the 500-line limit. |
+| S2 | `catalog/catalog/structure/wide_dir/` (finding, 11 entries), `.../wide_dir_ok/` (allowed, 10 entries + `__init__.py` + `__main__.py`) | both | the fan-out limit is 10; the structural files don't count as entries. |
+| S3 | `catalog/catalog/structure/wide_names.py` (finding, 16 public names), `.../wide_names_ok.py` (allowed, 16 names but 1 decorator-registered) | both | the public-name limit is 15; a decorated top-level function doesn't count. |
+| G1 | `catalog/catalog/gaps/{box,g1_instance_attr}.py` | missed | `obj._y` on an instance needs type information this tool doesn't have. |
+| G2 | `catalog/catalog/gaps/g2_dynamic_access.py` | missed | `getattr(mod, "_x")` and `importlib.import_module("...")` bypass the static import graph entirely. |
+| G3 | `catalog/catalog/gaps/g3_shadowing.py` | missed | a parameter named `mod` anywhere in the file drops the import's binding, so a real module-level `mod._x` is missed. |
+| G4 | `catalog/catalog/gaps/g4_third_party.py` | missed | no repo file or folder is named `numpy`, so the import never resolves inside the repo and the later `numpy._x` escapes detection. |
+| G5 | `catalog/catalog/gaps/collide/{requests/_queue.py,client_g5.py}` | false finding (visible) | a local folder happens to be named `requests`, like the third-party library; `import requests` in `client_g5.py` means the real library but resolves to the local folder, producing a false private-item finding on `collide/requests/_queue.py`. |
+| G6 | `billing/billing/g6/{alpha,beta}/helpers.py`, `.../caller.py` | no edge, warning only | the tool's suffix match finds 2 equally-plausible candidates for `import helpers`; Python itself would import neither, since neither directory is on `sys.path`. No edge is drawn, only `warning: ambiguous import` on stderr. |
+| G7 | `billing/billing/g7/{producer,consumer}.py` | missed (no edge) | the 2 files are coupled only through a string registry key / env var, never an import. |
+| G8 | `catalog/catalog/gaps/tests/breaks_privacy_g8.py` | skipped | sits inside a directory literally named `tests`, which the tool (and pytest, since the file isn't named `test_*.py`/`*_test.py`) always skips. |
+
+See the main [README](../../README.md)'s rules section and blind-spots
+section for the prose each row of this table backs.

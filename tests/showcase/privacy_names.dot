@@ -1,0 +1,40 @@
+// Name privacy cases N1-N3, plus A5 (name-private _x in __init__.py, same
+// discounts/ cluster). M/A1-A4/A6/G cases live in privacy_modules.dot.
+// Render: dot -Tpng -Gdpi=150 privacy_names.dot -o privacy_names.png
+digraph privacy_names {
+  rankdir=LR;
+  node [shape=box, fontname="Helvetica", fontsize=11];
+  graph [fontname="Helvetica", fontsize=11];
+  edge [fontname="Helvetica", fontsize=10];
+
+  subgraph cluster_catalog_pkg {
+    label="catalog/catalog/privacy";
+    style=dashed;
+
+    parent_peek [label="parent_peek.py"];
+    outsider_a5_py [label="outsider_a5.py"];
+
+    subgraph cluster_discounts {
+      label="discounts  (owner of _x)";
+      style=filled; fillcolor="#fff6cc";
+      apply_py [label="apply.py"];
+      discounts_init [label="__init__.py  (_x)", style=bold];
+    }
+
+    subgraph cluster_receipts {
+      label="receipts";
+      style=solid;
+      invoice_py [label="invoice.py  (_fmt)", style="filled,bold", fillcolor="#fff6cc"];
+      other_py [label="other.py"];
+    }
+  }
+
+  // N1: finding, file-private name, same dir
+  other_py -> invoice_py [label="N1 _fmt", color=red];
+  // N2 / A5: allowed, same dir as owner package
+  apply_py -> discounts_init [label="N2 / A5 _x", color=green];
+  // N3: finding, outside owning dir
+  parent_peek -> discounts_init [xlabel="N3 _x", color=red];
+  // A5: finding, outside owning dir
+  outsider_a5_py -> discounts_init [xlabel="A5 _x", color=red];
+}

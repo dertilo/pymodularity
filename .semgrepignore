@@ -1,0 +1,4 @@
+# A static fixture repo, not real project code: committed golden-test input
+# for tests/test_showcase.py, deliberately containing every convention
+# violation `pymodularity check` knows about (and a few it doesn't).
+tests/showcase/

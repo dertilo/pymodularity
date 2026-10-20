@@ -16,6 +16,10 @@ Or, inside a project: `uv add --dev pymodularity` and run `pymodularity ...` in 
 
 ## The rules `check` enforces
 
+Every rule below has a worked example, finding or allowed, in
+[`tests/showcase/`](tests/showcase/README.md), a committed fixture repo
+that also serves as a golden test for the whole rule set at once.
+
 Given this tree:
 
 ```
@@ -56,6 +60,10 @@ shop/
 - `pymodularity metrics <repo>` — print a coupling report to stdout: reach (dependents/dependencies, transitive) and a `score` per file and per directory; interface width (names other code imports from a unit); exposure share (how much of what a file defines actually gets used elsewhere); entry files (how much of a directory outside code actually reaches into); misplaced files (files whose closest partners sit mostly in another directory). Always exits 0 — a report, never a gate.
 
 ## Blind spots
+
+Every blind spot below has a worked example, each tagged "missed" or
+"false finding", in
+[`tests/showcase/`](tests/showcase/README.md)'s gap cases (G1-G8).
 
 `pymodularity` shows import coupling only, a lower bound on logical coupling ("if A changes, must B?"). Coupling that bypasses Python imports stays invisible:
 
