@@ -13,16 +13,18 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from pymodularity._parse._resolve import (
-    Ambiguous,
     Index,
     ModuleCandidates,
-    Resolved,
     SuffixIndex,
     build_index,
     path_components,
-    resolve_exact,
-    resolve_relative,
 )
+from pymodularity._parse.attrs import (
+    PathParts,
+    collect_attribute_accesses,
+    locally_bound_names,
+)
+from pymodularity._parse.imports import resolve_import_node
 
 # (importer_rel, target_rel) file-level import edge
 EdgeKey = tuple[Path, Path]
@@ -154,11 +156,15 @@ def _top_level_registered_names(tree: ast.Module) -> frozenset[str]:
 @dataclass(frozen=True, slots=True)
 class _CollectedEdges:
     """What one parse of a repo's files collects: file-level import edges
-    (with their imported names), the ambiguous-import warnings raised along
-    the way, each file's top-level defined names, and each file's
+    (with their imported names), the attribute-form equivalents of both
+    (a module reached through an attribute chain, a private name accessed
+    as `mod._x` rather than imported), the ambiguous-import warnings raised
+    along the way, each file's top-level defined names, and each file's
     decorator-registered names (a subset of defined_names)."""
 
     edge_names: EdgeNames
+    attr_module_edges: EdgeNames
+    attr_name_edges: EdgeNames
     warnings: tuple[_AmbiguityWarning, ...]
     defined_names: Mapping[Path, frozenset[str]]
     registered_names: Mapping[Path, frozenset[str]]
@@ -174,6 +180,8 @@ def _collect_edges(
     # e.g. a plain "import x.y" or a "from a import b" where b is itself the
     # resolved submodule rather than a name defined inside it)
     edge_names: dict[EdgeKey, set[str]] = {}
+    attr_module_edges: dict[EdgeKey, set[str]] = {}
+    attr_name_edges: dict[EdgeKey, set[str]] = {}
     warnings: list[_AmbiguityWarning] = []
     defined_names: dict[Path, frozenset[str]] = {}
     registered_names: dict[Path, frozenset[str]] = {}
@@ -190,73 +198,75 @@ def _collect_edges(
         registered_names[rel] = _top_level_registered_names(tree)
         importer_dir_parts = path_components(rel.parent)
         targets: list[_ResolvedImport] = []
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Import):
-                for alias in node.names:
-                    dotted = alias.name.split(".")
-                    res = resolve_exact(
-                        dotted, importer_dir_parts, suffix_index, module_candidates
-                    )
-                    if isinstance(res, Ambiguous):
-                        warnings.append((rel, res.candidates))
-                    elif isinstance(res, Resolved):
-                        targets.append((res.path, frozenset()))
-            elif isinstance(node, ast.ImportFrom):
-                if node.level and node.level > 0:
-                    requests: list[tuple[tuple[str, ...], frozenset[str]]]
-                    if node.module:
-                        requests = [
-                            (
-                                tuple(node.module.split(".")),
-                                frozenset(alias.name for alias in node.names),
-                            )
-                        ]
-                    else:
-                        requests = [((alias.name,), frozenset()) for alias in node.names]
-                    for module_parts, names_here in requests:
-                        res = resolve_relative(
-                            module_parts,
-                            node.level,
-                            importer_dir_parts,
-                            module_candidates,
-                        )
-                        if isinstance(res, Resolved):
-                            targets.append((res.path, names_here))
-                else:
-                    module_parts = node.module.split(".") if node.module else []
-                    for alias in node.names:
-                        res = resolve_exact(
-                            module_parts + [alias.name],
-                            importer_dir_parts,
-                            suffix_index,
-                            module_candidates,
-                        )
-                        if isinstance(res, Ambiguous):
-                            warnings.append((rel, res.candidates))
-                            continue
-                        if isinstance(res, Resolved):
-                            targets.append((res.path, frozenset()))
-                            continue
-                        res = resolve_exact(
-                            module_parts,
-                            importer_dir_parts,
-                            suffix_index,
-                            module_candidates,
-                        )
-                        if isinstance(res, Ambiguous):
-                            warnings.append((rel, res.candidates))
-                        elif isinstance(res, Resolved):
-                            targets.append((res.path, frozenset({alias.name})))
+        # local name -> canonical dotted components of every module it's
+        # bound to (usually one; a set when 2 package roots both contribute
+        # a same-named top package, `import a.b; import a.c`), for every
+        # import that binds a name to a module (not a value): drives the
+        # attribute-form check below (`import a.b.mod` then `a.b.mod._x`,
+        # `from a.b import mod` then `mod._x`, ...).
+        binding: dict[str, set[PathParts]] = {}
+        # dotted-prefix components a plain `import a.b.mod` (no `as`) walks
+        # through on its own -- skipped as attribute-form hops, since
+        # they're steps of that one import, not a second access.
+        plain_import_hops: set[PathParts] = set()
 
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.Import, ast.ImportFrom)):
+                continue
+            effects = resolve_import_node(
+                node, importer_dir_parts, suffix_index, module_candidates, repo
+            )
+            targets.extend(effects.targets)
+            for name, comp in effects.bindings:
+                binding.setdefault(name, set()).add(comp)
+            plain_import_hops.update(effects.plain_import_hops)
+            warnings.extend((rel, cands) for cands in effects.ambiguous_candidates)
+
+        imported_targets: set[Path] = set()
+        imported_name_pairs: set[tuple[Path, str]] = set()
         for t, names_here in targets:
             trel = t.relative_to(repo)
+            imported_targets.add(trel)
+            imported_name_pairs.update((trel, n) for n in names_here)
             if trel == rel:
                 continue
             edge_names.setdefault((rel, trel), set()).update(names_here)
 
+        # Option A, conservative: a name this file also rebinds locally (a
+        # parameter, assignment target, for/with/except/comprehension
+        # target, nested def/class) is dropped from `binding` for the whole
+        # file -- a false finding becomes a missed one.
+        shadowed = locally_bound_names(tree)
+        if shadowed:
+            binding = {k: v for k, v in binding.items() if k not in shadowed}
+
+        module_hops, name_accesses = collect_attribute_accesses(
+            tree, binding, module_candidates, plain_import_hops
+        )
+        for hop in module_hops:
+            trel = module_candidates[hop].path.relative_to(repo)
+            # an attribute-form finding is dropped when the import form
+            # already reports the same (importer, target) for a module.
+            if trel != rel and trel not in imported_targets:
+                attr_module_edges.setdefault((rel, trel), set())
+        for current_comp, name in name_accesses:
+            trel = module_candidates[current_comp].path.relative_to(repo)
+            # same dedup, for the (importer, target, name) shape.
+            if trel == rel or (trel, name) in imported_name_pairs:
+                continue
+            attr_name_edges.setdefault((rel, trel), set()).add(name)
+
     frozen_edge_names: EdgeNames = {k: frozenset(v) for k, v in edge_names.items()}
+    frozen_attr_module_edges: EdgeNames = {
+        k: frozenset(v) for k, v in attr_module_edges.items()
+    }
+    frozen_attr_name_edges: EdgeNames = {
+        k: frozenset(v) for k, v in attr_name_edges.items()
+    }
     return _CollectedEdges(
         frozen_edge_names,
+        frozen_attr_module_edges,
+        frozen_attr_name_edges,
         tuple(warnings),
         defined_names,
         registered_names,
@@ -290,13 +300,15 @@ def _build_file_graph(nodes: AbstractSet[Path], edge_names: EdgeNames) -> _FileG
 class _RepoGraph:
     """Every structure every subcommand needs, built once from one parse of
     `repo`: the file list, the directories holding Python code, the
-    file-level import edges (and their imported names), each file's
-    top-level defined names, each file's decorator-registered names, and
-    the forward/reverse file adjacency."""
+    file-level import edges (and their imported names), their attribute-form
+    equivalents, each file's top-level defined names, each file's
+    decorator-registered names, and the forward/reverse file adjacency."""
 
     py_files: tuple[Path, ...]
     dirs_with_py: frozenset[Path]
     edge_names: EdgeNames
+    attr_module_edges: EdgeNames
+    attr_name_edges: EdgeNames
     defined_names: Mapping[Path, frozenset[str]]
     registered_names: Mapping[Path, frozenset[str]]
     adj: Mapping[Path, frozenset[Path]]
@@ -327,6 +339,8 @@ def build_graph(repo: Path) -> _RepoGraph:
         py_files,
         idx.dirs_with_py,
         collected.edge_names,
+        collected.attr_module_edges,
+        collected.attr_name_edges,
         collected.defined_names,
         collected.registered_names,
         file_graph.adj,

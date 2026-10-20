@@ -1,7 +1,5 @@
 # pymodularity
 
-Formerly published as `underscope`.
-
 The underscore's position in a Python import path sets that import's scope — Rust's `pub(super)`/`pub(crate)`, applied to PEP 8 underscores.
 
 `pymodularity` draws a repo's real Python imports as mermaid diagrams, checks them against conventions derived from the code itself (no allow-list to maintain), and reports which files and directories carry the most structural coupling. It needs only the standard library to analyze your code — no runtime dependencies. `check`'s dependency-declaration rule additionally needs `uv` on PATH (see below).
@@ -39,7 +37,7 @@ shop/
   - if `m` is a package (an `__init__.py` or a namespace package directory), `_x` belongs to that directory, and files under it may import it.
   - a parent never reaches into a child's private items, and neither do siblings.
   - `shop/billing/invoice.py` above is allowed (it's under `shop/billing`, `_pricing`'s owner); `shop/catalog/listing.py` is a finding.
-  - the attribute form (`import shop.billing._pricing as p; p.compute_total`) is out of scope here — ruff's `SLF001` already flags it.
+  - the same scope rule also covers the attribute form — a module or name reached through a dotted attribute chain from a name an import bound, rather than named directly in an import statement: `import shop.billing.pricing; shop.billing.pricing._x`, `import shop.billing.pricing as p; p._x`, `from shop.billing import pricing; pricing._x`, and a private module reached deeper in the chain (`import shop; shop._internal.x` applies the private-*module* rule to `shop._internal`, not the private-name rule). The attribute form only reports what the import form doesn't: a hop that lands on the same module or name an import statement in the same file already reaches — including an intermediate hop on a plain `import a.b.c`'s own dotted path — is not reported a second time. Findings from this form print with a ` (via attribute access)` suffix.
 
 `pymodularity check .` exits 1 on any finding and prints, per finding, the importing file, the target, and the directory or file that owns it.
 
@@ -71,3 +69,4 @@ Other limits:
 - a third-party name that happens to equal a package folder elsewhere in the repo draws a false edge.
 - test directories (`tests/`, `test/`) and test files (`test_*.py`, `*_test.py`, `conftest.py`) are always skipped, no flag — a test importing a sibling would otherwise draw a production dependency that production never has.
 - `metrics` is a report on numbers that keep moving even on a repo that passes `check` clean; gating on it rewards gaming the number (for example, replacing an import with a string-keyed registry) instead of actually lowering coupling.
+- the attribute form's blind spots: an instance attribute (`obj._y`) needs type information this tool doesn't have — ruff's `SLF001` is the complement there, though unlike this rule it carries no owner/descendant scope, so it also flags access from inside the owning file or directory; a base name bound to a third-party module, or one that doesn't resolve inside the repo; `getattr(mod, "_x")` or other `importlib`-style access; and a name the file also rebinds locally anywhere (a parameter, an assignment target, a `for`/`with`/`except`/comprehension target, a nested `def`/`class`) isn't checked at all through that name — conservative on purpose: a false finding would become a missed one, which is the right trade for a gate.

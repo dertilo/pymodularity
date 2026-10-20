@@ -34,15 +34,22 @@ def _visibility_scope(rel: Path, package_roots: Sequence[Path]) -> Path:
 @dataclass(frozen=True, slots=True)
 class _PrivacyViolation:
     """An import that reaches a module private to a directory it is not
-    under."""
+    under. `via_attribute` marks a module reached through an attribute
+    chain (`import a; a._internal.x`) rather than an import statement
+    itself -- same scope rule, same `find_privacy_violations`, called a
+    second time on the attribute-form edges `_parse.graph` collects."""
 
     importer: Path
     target: Path
     owner: Path
+    via_attribute: bool = False
 
 
 def find_privacy_violations(
-    edge_names: EdgeNames, package_roots: Sequence[Path]
+    edge_names: EdgeNames,
+    package_roots: Sequence[Path],
+    *,
+    via_attribute: bool = False,
 ) -> tuple[_PrivacyViolation, ...]:
     violations: list[_PrivacyViolation] = []
     scope_cache: dict[Path, Path] = {}
@@ -56,7 +63,9 @@ def find_privacy_violations(
         scope = scope_of(target_rel)
         if importer_rel.is_relative_to(scope):
             continue
-        violations.append(_PrivacyViolation(importer_rel, target_rel, scope))
+        violations.append(
+            _PrivacyViolation(importer_rel, target_rel, scope, via_attribute)
+        )
 
     violations.sort(key=lambda v: (str(v.importer), str(v.target)))
     return tuple(violations)
@@ -84,16 +93,22 @@ def _name_owner(target_rel: Path) -> _NameOwner:
 @dataclass(frozen=True, slots=True)
 class _NameViolation:
     """An import of a private name (`from m import _x`) that reaches
-    outside the directory (package) or file that name is private to."""
+    outside the directory (package) or file that name is private to.
+    `via_attribute` marks a name reached as `mod._x` rather than imported --
+    same scope rule, same `find_name_violations`, called a second time on
+    the attribute-form edges `_parse.graph` collects."""
 
     importer: Path
     target: Path
     name: str
     owner: Path
     owner_is_dir: bool
+    via_attribute: bool = False
 
 
-def find_name_violations(edge_names: EdgeNames) -> tuple[_NameViolation, ...]:
+def find_name_violations(
+    edge_names: EdgeNames, *, via_attribute: bool = False
+) -> tuple[_NameViolation, ...]:
     violations: list[_NameViolation] = []
     for (importer_rel, target_rel), names in edge_names.items():
         for name in names:
@@ -109,6 +124,7 @@ def find_name_violations(edge_names: EdgeNames) -> tuple[_NameViolation, ...]:
                     name,
                     owner_info.owner,
                     owner_info.owner_is_dir,
+                    via_attribute,
                 )
             )
     violations.sort(key=lambda v: (str(v.importer), str(v.target), v.name))
@@ -149,12 +165,14 @@ def print_check_findings(
     total_private = len(privacy_violations) + len(name_violations)
     print(f"## Private-item violations: {total_private} finding(s)")
     for v in privacy_violations:
-        print(f"- {v.importer} -> {v.target}: allowed only inside {v.owner}")
+        suffix = " (via attribute access)" if v.via_attribute else ""
+        print(f"- {v.importer} -> {v.target}: allowed only inside {v.owner}{suffix}")
     for nv in name_violations:
         scope = "directory" if nv.owner_is_dir else "file"
+        suffix = " (via attribute access)" if nv.via_attribute else ""
         print(
             f"- {nv.importer} -> {nv.target}: name {nv.name} private to "
-            + f"{scope} {nv.owner}"
+            + f"{scope} {nv.owner}{suffix}"
         )
     print()
 

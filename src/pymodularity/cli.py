@@ -51,9 +51,20 @@ double-counted here) -- if `m` resolves to a single file, `_x` is private
 to that file and no other file may import it, including a sibling in the
 same directory or that directory's own `__init__.py`; if `m` resolves to a
 package (`__init__.py` or a namespace package directory), `_x` is private
-to that directory and only files under it may import it. The attribute
-form (`import a.b; a.b._x`) is out of scope here; ruff's SLF001 already
-flags it. (3) dependency declarations, on by default, skipped with
+to that directory and only files under it may import it. The same scope
+rule also covers the attribute form, `import a.b.mod; a.b.mod._x` or
+`import a; a._internal.x` -- a private module or name reached by
+attribute chain from a name an import bound, not just one named in an
+import statement itself. Findings from this form print the same as the
+import form, with a ` (via attribute access)` suffix. Blind spots: an
+instance attribute (`obj._y`) needs type information this tool doesn't
+have -- ruff's SLF001 is the complement there, though unlike this rule it
+has no owner/descendant scope, so it also flags access from inside the
+owning file or directory; a base name bound to a third-party or
+unresolvable module; `getattr`/`importlib` access; and shadowing (a local
+name that rebinds the imported name) is not tracked, so a rebound name is
+still checked against its original import. (3) dependency declarations,
+on by default, skipped with
 `--no-deps`: per package root, shells out to a pinned deptry
 (`uv run --directory <pkg> --with deptry==<version> --frozen deptry .
 --json-output <tmp>`, nested package roots excluded via
@@ -123,8 +134,18 @@ def _run_check(repo: Path, run_deps: bool) -> int:
     cycle_findings = find_all_cycle_findings(graph.dirs_with_py, graph.edge_names)
 
     package_roots = find_package_roots(repo)
-    privacy_violations = find_privacy_violations(graph.edge_names, package_roots)
-    name_violations = find_name_violations(graph.edge_names)
+    privacy_violations = sorted(
+        find_privacy_violations(graph.edge_names, package_roots)
+        + find_privacy_violations(
+            graph.attr_module_edges, package_roots, via_attribute=True
+        ),
+        key=lambda v: (str(v.importer), str(v.target)),
+    )
+    name_violations = sorted(
+        find_name_violations(graph.edge_names)
+        + find_name_violations(graph.attr_name_edges, via_attribute=True),
+        key=lambda v: (str(v.importer), str(v.target), v.name),
+    )
     distinct_file_cycles = count_file_level_cycles(graph.adj)
     any_finding = print_check_findings(
         cycle_findings, distinct_file_cycles, privacy_violations, name_violations
