@@ -1,7 +1,8 @@
-# G5: this import means the third-party `requests` library, but a local
-# folder of the same name shadows it, drawing a false edge -- surfaced here
-# as a false private-item finding (via attribute access) on the local
-# `collide/requests` package, not the real PyPI one.
+# G5: this import means the third-party `requests` library. A local
+# folder of the same name sits right next to it (`collide/requests`),
+# but the tool only resolves absolute imports through package roots, so
+# it correctly treats `requests` as unresolved (third-party) here --
+# no edge to the local folder, no finding.
 import requests
 
 

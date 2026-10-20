@@ -18,10 +18,10 @@ the owner: a directory for private modules and `__init__.py` names, the
 file itself for a private name in a regular file; it is labelled "owner
 of ...". Files are plain boxes, the private target is bold-bordered.
 Edge colour: green = allowed, red = finding, grey dashed = missed (a
-documented gap), orange = false finding (G5), red dotted = counts as a
-finding but via a special import kind (TYPE_CHECKING-only or in-function
-import). Edge labels carry the case ID and, for name cases, the private
-name. S cases are table-only (no edge to draw). Re-render with
+documented gap), red dotted = counts as a finding but via a special
+import kind (TYPE_CHECKING-only or in-function import). Edge labels
+carry the case ID and, for name cases, the private name. S cases are
+table-only (no edge to draw). Re-render with
 `dot -Tpng -Gdpi=150 <name>.dot -o <name>.png` from this directory.
 
 Module/attribute privacy (M1-M5, A1-A4, A6):
@@ -32,7 +32,7 @@ Name privacy (N1-N3, A5):
 
 ![privacy (name cases)](privacy_names.png)
 
-Gaps that draw an edge (G1, G2, G3, G5):
+Gaps that draw an edge (G1, G2, G3):
 
 ![gaps](gaps.png)
 
@@ -68,8 +68,8 @@ Import cycles (C1-C5):
 | G2 | `catalog/catalog/gaps/g2_dynamic_access.py` | missed | `getattr(mod, "_x")` and `importlib.import_module("...")` bypass the static import graph entirely. |
 | G3 | `catalog/catalog/gaps/g3_shadowing.py` | missed | a parameter named `mod` anywhere in the file drops the import's binding, so a real module-level `mod._x` is missed. |
 | G4 | `catalog/catalog/gaps/g4_third_party.py` | missed | no repo file or folder is named `numpy`, so the import never resolves inside the repo and the later `numpy._x` escapes detection. |
-| G5 | `catalog/catalog/gaps/collide/{requests/_queue.py,client_g5.py}` | false finding (visible) | a local folder happens to be named `requests`, like the third-party library; `import requests` in `client_g5.py` means the real library but resolves to the local folder, producing a false private-item finding on `collide/requests/_queue.py`. |
-| G6 | `billing/billing/g6/{alpha,beta}/helpers.py`, `.../caller.py` | no edge, warning only | the tool's suffix match finds 2 equally-plausible candidates for `import helpers`; Python itself would import neither, since neither directory is on `sys.path`. No edge is drawn, only `warning: ambiguous import` on stderr. |
+| G5 | `catalog/catalog/gaps/collide/{requests/_queue.py,client_g5.py}` | resolved correctly (no edge) | a local folder happens to be named `requests`, like the third-party library, but `requests` in `client_g5.py` resolves only through import roots (the repo root, package roots, their `src/`); the local `collide/requests` folder isn't one, so the import is correctly treated as the real, unresolved third-party library. No edge, no finding. |
+| G6 | `billing/g6app/main.py`, `catalog/g6app/main.py`, `scripts/g6_caller.py` | no edge, warning only | `billing/` and `catalog/` are 2 different package roots that each happen to provide a top-level `g6app.main` module; `scripts/g6_caller.py` sits under neither root, so no ancestor root wins and `import g6app.main` is genuinely ambiguous. The tool warns and draws no edge; Python itself would import whichever root came first on `sys.path`. |
 | G7 | `billing/billing/g7/{producer,consumer}.py` | missed (no edge) | the 2 files are coupled only through a string registry key / env var, never an import. |
 | G8 | `catalog/catalog/gaps/tests/breaks_privacy_g8.py` | skipped | sits inside a directory literally named `tests`, which the tool (and pytest, since the file isn't named `test_*.py`/`*_test.py`) always skips. |
 

@@ -9,9 +9,9 @@ from pathlib import Path
 
 from pymodularity._parse._resolve import (
     Ambiguous,
+    ImportRoots,
     ModuleCandidates,
     Resolved,
-    SuffixIndex,
     resolve_exact,
     resolve_relative,
 )
@@ -44,7 +44,7 @@ class ImportEffects:
 def _resolve_import(
     node: ast.Import,
     importer_dir_parts: tuple[str, ...],
-    suffix_index: SuffixIndex,
+    import_roots: ImportRoots,
     module_candidates: ModuleCandidates,
     repo: Path,
 ) -> ImportEffects:
@@ -54,7 +54,7 @@ def _resolve_import(
     ambiguous: list[tuple[Path, ...]] = []
     for alias in node.names:
         dotted = alias.name.split(".")
-        res = resolve_exact(dotted, importer_dir_parts, suffix_index, module_candidates)
+        res = resolve_exact(dotted, importer_dir_parts, import_roots, module_candidates)
         if isinstance(res, Ambiguous):
             ambiguous.append(res.candidates)
         elif isinstance(res, Resolved):
@@ -120,7 +120,7 @@ def _resolve_relative_import_from(
 def _resolve_absolute_import_from(
     node: ast.ImportFrom,
     importer_dir_parts: tuple[str, ...],
-    suffix_index: SuffixIndex,
+    import_roots: ImportRoots,
     module_candidates: ModuleCandidates,
     repo: Path,
 ) -> ImportEffects:
@@ -132,7 +132,7 @@ def _resolve_absolute_import_from(
         res = resolve_exact(
             module_parts + [alias.name],
             importer_dir_parts,
-            suffix_index,
+            import_roots,
             module_candidates,
         )
         if isinstance(res, Ambiguous):
@@ -145,7 +145,7 @@ def _resolve_absolute_import_from(
             )
             continue
         res = resolve_exact(
-            module_parts, importer_dir_parts, suffix_index, module_candidates
+            module_parts, importer_dir_parts, import_roots, module_candidates
         )
         if isinstance(res, Ambiguous):
             ambiguous.append(res.candidates)
@@ -159,7 +159,7 @@ def _resolve_absolute_import_from(
 def resolve_import_node(
     node: ast.Import | ast.ImportFrom,
     importer_dir_parts: tuple[str, ...],
-    suffix_index: SuffixIndex,
+    import_roots: ImportRoots,
     module_candidates: ModuleCandidates,
     repo: Path,
 ) -> ImportEffects:
@@ -168,12 +168,12 @@ def resolve_import_node(
     and any ambiguous-import candidates."""
     if isinstance(node, ast.Import):
         return _resolve_import(
-            node, importer_dir_parts, suffix_index, module_candidates, repo
+            node, importer_dir_parts, import_roots, module_candidates, repo
         )
     if node.level and node.level > 0:
         return _resolve_relative_import_from(
             node, importer_dir_parts, module_candidates, repo
         )
     return _resolve_absolute_import_from(
-        node, importer_dir_parts, suffix_index, module_candidates, repo
+        node, importer_dir_parts, import_roots, module_candidates, repo
     )

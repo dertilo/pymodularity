@@ -53,6 +53,23 @@ shop/
   - a package root (the same `pyproject.toml` `[project]`-table directory the privacy and dependency rules anchor on) has at most 100 scanned files, each file counted against its nearest (innermost) package root.
   - a file has at most 15 public top-level names (no leading `_`): `def`/`async def`/`class`, a plain or annotated assignment target (including tuple-unpacking), or a `type X = ...` alias, at top level or nested in a top-level `if`/`try` block (including `elif`/`else`, `except` handlers, `finally`). Imports never count. A top-level function (not a class — `@dataclass` sits on most models) a decorator registers doesn't count either: FastAPI, Typer/Click, Dagster, pytest and the like derive part of their contract (route `operationId`, CLI command name, asset key, fixture name) from the function's name, so counting it toward the width cap would pressure someone into renaming or restructuring around a name the framework, not this tool, owns. Any decorator counts — there's no list of framework names.
 
+### How an absolute import resolves to a file
+
+An absolute import (`import a.b.c`, `from a.b import c`) is matched only
+through *import roots*: the repo root itself, every package root (a
+directory with a `pyproject.toml` `[project]` table), and that root's
+`src/` directory where one exists. `a.b.c` resolves to
+`<root>/a/b/c.py` (or `a/b/c/__init__.py`) for one of those roots — no
+repo-wide suffix guess. If a regular module and a namespace-package
+directory both match, the regular module wins; if several import roots
+still match, the hit whose root is the deepest ancestor of the importer
+wins (an `import app.x` inside `services/webagent` picks `webagent`'s
+own `app`, not another service's). If several roots remain tied, it's
+`warning: ambiguous import` on stderr and no edge; if none match, the
+import is treated as unresolved (third-party or stdlib) and silently
+skipped. Relative imports (`from . import x`) are unaffected by any of
+this — they resolve from the importing file's own path.
+
 ## The 3 subcommands
 
 - `pymodularity check <repo> [--no-deps]` — run all four rules above, print findings, exit 1 on any finding (`--no-deps` skips the dependency-declaration rule).
@@ -72,9 +89,9 @@ Every blind spot below has a worked example, each tagged "missed" or
 
 Other limits:
 
-- a `warning: ambiguous import` line (printed to stderr) means several files in the repo match one import; no edge is drawn for it.
-- an import that only resolves through a runtime `sys.path` edit is matched by file path, which can pick the wrong file.
-- a third-party name that happens to equal a package folder elsewhere in the repo draws a false edge.
+- a `warning: ambiguous import` line (printed to stderr) means several import roots provide the imported module and none is an ancestor of the importer; no edge is drawn for it.
+- an import that only resolves through a runtime `sys.path` edit draws an edge only if the inserted directory is an import root; otherwise it draws no edge.
+- a script that imports a sibling file by relying on its own directory being first on `sys.path` (`python main.py` importing `execution.py`, with no package root anywhere nearby) draws no edge: resolution only looks through import roots, never through the importer's own directory.
 - test directories (`tests/`, `test/`) and test files (`test_*.py`, `*_test.py`, `conftest.py`) are always skipped, no flag — a test importing a sibling would otherwise draw a production dependency that production never has.
 - `metrics` is a report on numbers that keep moving even on a repo that passes `check` clean; gating on it rewards gaming the number (for example, replacing an import with a string-keyed registry) instead of actually lowering coupling.
 - the attribute form's blind spots: an instance attribute (`obj._y`) needs type information this tool doesn't have — ruff's `SLF001` is the complement there, though unlike this rule it carries no owner/descendant scope, so it also flags access from inside the owning file or directory; a base name bound to a third-party module, or one that doesn't resolve inside the repo; `getattr(mod, "_x")` or other `importlib`-style access; and a name the file also rebinds locally anywhere (a parameter, an assignment target, a `for`/`with`/`except`/comprehension target, a nested `def`/`class`) isn't checked at all through that name — conservative on purpose: a false finding would become a missed one, which is the right trade for a gate.

@@ -1,1 +1,1 @@
-warning: ambiguous import in billing/billing/g6/caller.py: candidates billing/billing/g6/alpha/helpers.py, billing/billing/g6/beta/helpers.py
+warning: ambiguous import in scripts/g6_caller.py: candidates billing/g6app/main.py, catalog/g6app/main.py

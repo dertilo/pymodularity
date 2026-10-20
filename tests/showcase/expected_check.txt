@@ -26,8 +26,7 @@
     billing/billing/pricing/discount.py -> billing/billing/pricing/quote.py
     billing/billing/pricing/quote.py -> billing/billing/pricing/discount.py
 
-## Private-item violations: 14 finding(s)
-- catalog/catalog/gaps/collide/client_g5.py -> catalog/catalog/gaps/collide/requests/_queue.py: allowed only inside catalog/catalog/gaps/collide/requests (via attribute access)
+## Private-item violations: 13 finding(s)
 - catalog/catalog/privacy/attr_importers/importer_a4.py -> catalog/catalog/privacy/attrs_demo/_internal/__init__.py: allowed only inside catalog/catalog/privacy/attrs_demo (via attribute access)
 - catalog/catalog/privacy/attr_importers/importer_a4.py -> catalog/catalog/privacy/attrs_demo/_internal/x.py: allowed only inside catalog/catalog/privacy/attrs_demo (via attribute access)
 - catalog/catalog/privacy/parent_peek.py -> catalog/catalog/privacy/pricing/_pricing.py: allowed only inside catalog/catalog/privacy/pricing

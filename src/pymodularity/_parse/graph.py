@@ -13,9 +13,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from pymodularity._parse._resolve import (
+    ImportRoots,
     Index,
     ModuleCandidates,
-    SuffixIndex,
     build_index,
     path_components,
 )
@@ -25,6 +25,7 @@ from pymodularity._parse.attrs import (
     locally_bound_names,
 )
 from pymodularity._parse.imports import resolve_import_node
+from pymodularity._parse.packages import find_package_roots, should_skip_dir
 
 # (importer_rel, target_rel) file-level import edge
 EdgeKey = tuple[Path, Path]
@@ -33,24 +34,6 @@ EdgeNames = Mapping[EdgeKey, frozenset[str]]
 _AmbiguityWarning = tuple[Path, tuple[Path, ...]]
 # a resolved absolute/relative import: target file, imported names (if any)
 _ResolvedImport = tuple[Path, frozenset[str]]
-
-_SKIP_DIRS = frozenset(
-    {
-        ".git",
-        ".venv",
-        "venv",
-        "node_modules",
-        "__pycache__",
-        "build",
-        "dist",
-        "tests",
-        "test",
-    }
-)
-
-
-def should_skip_dir(name: str) -> bool:
-    return name in _SKIP_DIRS or name.startswith(".")
 
 
 def _is_test_file(name: str) -> bool:
@@ -174,7 +157,7 @@ def _collect_edges(
     repo: Path,
     py_files: Sequence[Path],
     module_candidates: ModuleCandidates,
-    suffix_index: SuffixIndex,
+    import_roots: ImportRoots,
 ) -> _CollectedEdges:
     # (importer_rel, target_rel) -> set of imported names (empty = no names,
     # e.g. a plain "import x.y" or a "from a import b" where b is itself the
@@ -214,7 +197,7 @@ def _collect_edges(
             if not isinstance(node, (ast.Import, ast.ImportFrom)):
                 continue
             effects = resolve_import_node(
-                node, importer_dir_parts, suffix_index, module_candidates, repo
+                node, importer_dir_parts, import_roots, module_candidates, repo
             )
             targets.extend(effects.targets)
             for name, comp in effects.bindings:
@@ -322,8 +305,9 @@ def build_graph(repo: Path) -> _RepoGraph:
     them, so `graph` and `metrics` compute them in their own run_*
     path."""
     py_files = _find_py_files(repo)
-    idx: Index = build_index(repo, py_files)
-    collected = _collect_edges(repo, py_files, idx.module_candidates, idx.suffix_index)
+    package_roots = find_package_roots(repo)
+    idx: Index = build_index(repo, py_files, package_roots)
+    collected = _collect_edges(repo, py_files, idx.module_candidates, idx.import_roots)
 
     for importer_rel, cands in collected.warnings:
         cand_strs = ", ".join(str(c.relative_to(repo)) for c in cands)

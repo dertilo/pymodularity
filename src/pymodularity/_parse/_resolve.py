@@ -1,6 +1,16 @@
 """The module index (`Index`/`build_index`) and import resolution
 (`resolve_exact`/`resolve_relative`, returning the `Resolved | Ambiguous |
-_Unresolved` sum) that `graph._collect_edges` drives one ast walk with."""
+_Unresolved` sum) that `graph._collect_edges` drives one ast walk with.
+
+`resolve_exact` resolves an absolute dotted import only against explicit
+import roots: the repo root, every package root (a directory whose
+pyproject.toml has a [project] table), and each root's `src/` subdirectory
+if present. There is no repo-wide suffix guess -- a module is only
+reachable through one of these roots, matching how Python itself resolves
+`sys.path` entries. The one gap this leaves: a script that imports a
+sibling file by relying on its own directory being first on `sys.path`
+(e.g. `python main.py` importing `execution.py`, with no pyproject.toml
+anywhere nearby) is not a package root and so is not resolved."""
 
 import sys
 from collections.abc import Mapping, Sequence
@@ -24,17 +34,9 @@ class _ModuleCandidate:
 
 ModuleCandidates = Mapping[_PathParts, _ModuleCandidate]
 
-
-@dataclass(frozen=True, slots=True)
-class _SuffixEntry:
-    """A module candidate indexed by dotted suffix."""
-
-    comp: _PathParts
-    path: Path
-    is_namespace_dir: bool
-
-
-SuffixIndex = Mapping[_PathParts, tuple[_SuffixEntry, ...]]
+# dotted-path components of one import root (repo root is (), a package
+# root is its repo-relative parts, each root's src/ layout adds + ("src",))
+ImportRoots = tuple[_PathParts, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -62,28 +64,19 @@ _Resolution = Resolved | Ambiguous | _Unresolved
 
 
 @dataclass(frozen=True, slots=True)
-class _ScoredCandidate:
-    """A module candidate scored for disambiguation against the importer."""
-
-    root_depth: int
-    is_ancestor: bool
-    path: Path
-    root: _PathParts
-    is_namespace_dir: bool
-
-
-@dataclass(frozen=True, slots=True)
 class Index:
     """What a repo's file list indexes into: the directories holding Python
-    code, every resolvable module candidate, and that candidate set indexed
-    by dotted suffix for lookup."""
+    code, every resolvable module candidate, and the import roots absolute
+    imports resolve against."""
 
     dirs_with_py: frozenset[Path]
     module_candidates: ModuleCandidates
-    suffix_index: SuffixIndex
+    import_roots: ImportRoots
 
 
-def build_index(repo: Path, py_files: Sequence[Path]) -> Index:
+def build_index(
+    repo: Path, py_files: Sequence[Path], package_roots: Sequence[Path]
+) -> Index:
     dirs_with_py: set[Path] = set()
     for f in py_files:
         d = f.relative_to(repo).parent
@@ -106,102 +99,59 @@ def build_index(repo: Path, py_files: Sequence[Path]) -> Index:
                 repo / d if d != Path(".") else repo, True
             )
 
-    suffix_index: dict[_PathParts, list[_SuffixEntry]] = {}
-    for comp, cand in module_candidates.items():
-        for k in range(1, len(comp) + 1):
-            suf = comp[-k:]
-            suffix_index.setdefault(suf, []).append(
-                _SuffixEntry(comp, cand.path, cand.is_namespace_dir)
-            )
-    frozen_suffix_index: SuffixIndex = {suf: tuple(v) for suf, v in suffix_index.items()}
+    import_roots: set[_PathParts] = {()}
+    for root in package_roots:
+        parts = path_components(root)
+        import_roots.add(parts)
+        if (repo / root / "src").is_dir():
+            import_roots.add((*parts, "src"))
 
-    return Index(frozenset(dirs_with_py), module_candidates, frozen_suffix_index)
+    return Index(frozenset(dirs_with_py), module_candidates, tuple(import_roots))
 
 
 def path_components(p: Path) -> _PathParts:
     return () if p == Path(".") else p.parts
 
 
-def _disambiguate(
-    cands: Sequence[_SuffixEntry],
-    importer_dir_parts: _PathParts,
-    suf: _PathParts,
-    module_candidates: ModuleCandidates,
-) -> _Resolution:
-    uniq: dict[tuple[_PathParts, Path], bool] = {}
-    for entry in cands:
-        uniq[(entry.comp, entry.path)] = entry.is_namespace_dir
-    entries = [_SuffixEntry(comp, path, isd) for (comp, path), isd in uniq.items()]
-
-    # Python prefers a regular package/module over a namespace-package
-    # directory portion, wherever on the path the two sit: if any candidate
-    # here is a real .py module or an __init__.py package, drop the
-    # namespace-dir candidates before scoring.
-    regular = [e for e in entries if not e.is_namespace_dir]
-    if regular:
-        entries = regular
-
-    scored: list[_ScoredCandidate] = []
-    for entry in entries:
-        root = entry.comp[: len(entry.comp) - len(suf)]
-        is_ancestor = root == importer_dir_parts[: len(root)]
-        scored.append(
-            _ScoredCandidate(
-                len(root), is_ancestor, entry.path, root, entry.is_namespace_dir
-            )
-        )
-
-    ancestors = [s for s in scored if s.is_ancestor]
-    if ancestors:
-        best_depth = max(s.root_depth for s in ancestors)
-        best = [s for s in ancestors if s.root_depth == best_depth]
-        return Resolved(best[0].path)
-
-    # a non-ancestor root is only valid if it is not itself inside a package:
-    # a module nested in someone else's package is not importable as a
-    # top-level name from another project. This filter only applies to
-    # single-file candidates (x.py); package candidates (x/__init__.py or a
-    # namespace dir x/) skip it.
-    def is_package(root: _PathParts) -> bool:
-        cand = module_candidates.get(root)
-        return (
-            cand is not None
-            and not cand.is_namespace_dir
-            and cand.path.name == "__init__.py"
-        )
-
-    def is_single_file_candidate(path: Path, isd: bool) -> bool:
-        return not isd and path.name != "__init__.py"
-
-    non_package_root = [
-        s
-        for s in scored
-        if not (
-            is_single_file_candidate(s.path, s.is_namespace_dir) and is_package(s.root)
-        )
-    ]
-    if len(non_package_root) == 1:
-        return Resolved(non_package_root[0].path)
-
-    if not non_package_root:
-        return _Unresolved()
-
-    return Ambiguous(tuple(sorted(s.path for s in non_package_root)))
-
-
 def resolve_exact(
     dotted_parts: Sequence[str],
     importer_dir_parts: _PathParts,
-    suffix_index: SuffixIndex,
+    import_roots: ImportRoots,
     module_candidates: ModuleCandidates,
 ) -> _Resolution:
+    """Resolves one absolute dotted import against the repo's import
+    roots: the repo root, each package root, and each root's `src/` layout
+    (see module docstring). A regular module/package beats a namespace-dir
+    candidate at another root; among what's left, the hit whose root is
+    the deepest ancestor of the importer wins; still several -> Ambiguous;
+    none -> unresolved."""
     if not dotted_parts or dotted_parts[0] in sys.stdlib_module_names:
         return _Unresolved()
-    suf = tuple(dotted_parts)
-    cands = suffix_index.get(suf)
-    if not cands:
+    dotted = tuple(dotted_parts)
+    hits: list[tuple[_PathParts, _ModuleCandidate]] = []
+    for root in import_roots:
+        cand = module_candidates.get(root + dotted)
+        if cand is not None:
+            hits.append((root, cand))
+    if not hits:
         return _Unresolved()
-    return _disambiguate(cands, importer_dir_parts, suf, module_candidates)
+
+    regular = [h for h in hits if not h[1].is_namespace_dir]
+    pool = regular or hits
+
+    unique_paths = {cand.path for _, cand in pool}
+    if len(unique_paths) == 1:
+        return Resolved(next(iter(unique_paths)))
+
+    ancestors = [h for h in pool if h[0] == importer_dir_parts[: len(h[0])]]
+    if ancestors:
+        best_depth = max(len(root) for root, _ in ancestors)
+        best_paths = {cand.path for root, cand in ancestors if len(root) == best_depth}
+        if len(best_paths) == 1:
+            return Resolved(next(iter(best_paths)))
+        return Ambiguous(tuple(sorted(best_paths)))
+
+    return Ambiguous(tuple(sorted(unique_paths)))
 
 
 def resolve_relative(

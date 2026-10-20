@@ -1,12 +1,30 @@
 """Package-root discovery: directories whose pyproject.toml has a
 [project] table, used by `_check` (the privacy rule's package-root anchor)
-and `_deps` (the dependency-declaration rule's per-package scan unit)."""
+and `_deps` (the dependency-declaration rule's per-package scan unit).
+`should_skip_dir` lives here (not in `graph`) so `graph` can import
+`find_package_roots` for import-root resolution without a cycle."""
 
 import os
 import tomllib
 from pathlib import Path
 
-from pymodularity._parse.graph import should_skip_dir
+_SKIP_DIRS = frozenset(
+    {
+        ".git",
+        ".venv",
+        "venv",
+        "node_modules",
+        "__pycache__",
+        "build",
+        "dist",
+        "tests",
+        "test",
+    }
+)
+
+
+def should_skip_dir(name: str) -> bool:
+    return name in _SKIP_DIRS or name.startswith(".")
 
 
 def _has_project_table(pyproject: Path) -> bool:
