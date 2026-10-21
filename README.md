@@ -38,8 +38,10 @@ Each finding names the importing file, the target and the owner.
 - **Declared dependencies match the imports:** [deptry](https://github.com/fpgmaas/deptry) reports unused, missing and transitive dependencies per package root.
   - requirement: `uv` on PATH. Without it, `check` exits 2.
   - `--no-deps` skips this rule.
-- **Structure limits:** at most 500 lines per file, 10 entries per directory, 100 files per package root and 15 public names per file.
+- **Structure limits:** at most 500 lines per file, 10 entries per directory, 100 files per package root and 10 public names per file.
   - no config, no baseline.
+  - ceiling: a limit marks the size that is clearly too much. It is no target.
+  - below a limit: a smaller interface is still better. `metrics` reports interface width and exposure share.
 
 Worked cases: the [showcase](tests/showcase/README.md) shows each rule except the dependency rule as allowed and finding cases.
 Definitions: [docs/rules.md](docs/rules.md) holds the counting rules, the deptry run, and the ruff rules for functions and classes.

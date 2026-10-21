@@ -1,11 +1,11 @@
-# S3: 16 public top-level names but 1 is decorator-registered, so only
-# 15 count against the limit; allowed.
+# S3: 11 public top-level names but 1 is decorator-registered, so only
+# 10 count against the limit; allowed.
 def _register(f):
     return f
 
 
 @_register
-def handler_16():
+def handler_11():
     pass
 
 
@@ -19,8 +19,3 @@ name_7 = 7
 name_8 = 8
 name_9 = 9
 name_10 = 10
-name_11 = 11
-name_12 = 12
-name_13 = 13
-name_14 = 14
-name_15 = 15

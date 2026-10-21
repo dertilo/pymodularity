@@ -13,7 +13,7 @@ from pymodularity._parse.packages import find_package_roots
 _MAX_FILE_LINES = 500
 _MAX_DIR_ENTRIES = 10
 _MAX_PACKAGE_FILES = 100
-_MAX_PUBLIC_NAMES = 15
+_MAX_PUBLIC_NAMES = 10
 
 # __init__.py and __main__.py don't count as directory entries (rule 2);
 # every other scanned file counts fully for every rule.

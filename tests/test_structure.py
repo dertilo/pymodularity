@@ -84,21 +84,21 @@ def test_package_size_violation(tmp_path: Path) -> None:
 
 
 def test_file_width_violation(tmp_path: Path) -> None:
-    """16 public top-level names (including one bound by tuple-unpacking)
-    trips the 15-name limit. Catches an implementation that only counts
+    """11 public top-level names (including one bound by tuple-unpacking)
+    trips the 10-name limit. Catches an implementation that only counts
     def/class, missing assignment targets and tuple-unpacking."""
-    names = "\n".join(f"n{i} = 1" for i in range(14))
+    names = "\n".join(f"n{i} = 1" for i in range(9))
     write(tmp_path / "wide.py", f"{names}\na, b = 1, 2\n")
 
     result = run_check(tmp_path, extra_args=("--no-deps",))
 
     assert result.returncode == 1
-    assert "wide.py: 16 public names (limit 15)" in result.stdout
+    assert "wide.py: 11 public names (limit 10)" in result.stdout
 
 
 def test_file_width_decorated_functions_exempt(tmp_path: Path) -> None:
     """16 decorated public functions plus 1 plain undecorated one stays
-    under the 15-name limit: the decorated ones don't count. Catches an
+    under the 10-name limit: the decorated ones don't count. Catches an
     implementation that forgets to exempt decorator-registered names from
     the width count."""
     handlers = "\n\n\n".join(f"@route\ndef h{i}():\n    pass" for i in range(16))
@@ -118,10 +118,10 @@ def test_file_width_decorated_class_still_counts(tmp_path: Path) -> None:
     """A decorated top-level class is not exempt from the width count
     (only decorated functions are -- `@dataclass` sits on most models).
     Catches an implementation that exempts any decorated def/class."""
-    names = "\n".join(f"n{i} = 1" for i in range(15))
+    names = "\n".join(f"n{i} = 1" for i in range(10))
     write(tmp_path / "wide.py", f"{names}\n\n\n@register\nclass Extra:\n    pass\n")
 
     result = run_check(tmp_path, extra_args=("--no-deps",))
 
     assert result.returncode == 1
-    assert "wide.py: 16 public names (limit 15)" in result.stdout
+    assert "wide.py: 11 public names (limit 10)" in result.stdout

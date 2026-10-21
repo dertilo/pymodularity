@@ -75,7 +75,7 @@ declares no runtime dependencies or has no uv.lock of its own; any other
 deptry failure, or unparseable JSON, is a finding-level failure. (4) and
 (5) structure limits, fixed constants, no config, no baseline: at most 500
 physical lines per file, 10 entries per directory (`__init__.py`/
-`__main__.py` excluded), 100 scanned files per package root, 15 public
+`__main__.py` excluded), 100 scanned files per package root, 10 public
 top-level names per file, and a public top-level name that no scanned
 file imports (a file no scanned file imports at all, `__init__.py` and
 `__main__.py`, and a name reachable through a whole-module import, are all

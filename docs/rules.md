@@ -25,6 +25,7 @@ This file holds the definitions neither of them spells out.
 
 The limits are fixed constants, with no config and no baseline.
 Every breach is a finding, however long it has existed.
+A limit is a ceiling, not a target: below it, a smaller interface is still better.
 
 - file: at most 500 physical lines.
 - directory: at most 10 entries.
@@ -32,7 +33,7 @@ Every breach is a finding, however long it has existed.
   - `__init__.py` and `__main__.py`: no entries, but they still count toward the other limits.
 - package root: at most 100 scanned files.
   - each file counts against its innermost package root.
-- file: at most 15 public top-level names. A public name has no leading `_`.
+- file: at most 10 public top-level names. A public name has no leading `_`.
   - counted: `def`, `async def`, `class`, a plain or annotated assignment target including tuple unpacking, and a `type X = ...` alias.
   - position: at top level, or inside a top-level `if` or `try` block, including `elif`, `else`, `except` and `finally`.
   - not counted: imports.
@@ -54,10 +55,10 @@ Ruff's size rules cover functions and classes.
 | `PLR0913` too-many-arguments | `lint.pylint.max-args` | 5 | 5 |
 | `PLR0915` too-many-statements | `lint.pylint.max-statements` | 50 | 50 |
 | `PLR1702` too-many-nested-blocks (preview) | `lint.pylint.max-nested-blocks` | 3 | 5 |
-| `PLR0904` too-many-public-methods (preview) | `lint.pylint.max-public-methods` | 20 | 20 |
+| `PLR0904` too-many-public-methods (preview) | `lint.pylint.max-public-methods` | 10 | 20 |
 | `PLR0914` too-many-locals (preview) | `lint.pylint.max-locals` | 15 | 15 |
 | `PLR0916` too-many-boolean-expressions (preview) | `lint.pylint.max-bool-expr` | 5 | 5 |
 | `PLR0917` too-many-positional-arguments | `lint.pylint.max-positional-args` | 5 | `max-args` |
 
 - `PLR1702`: recommended below the default, because ruff's default of 5 almost never fires.
-- `PLR0904`: it stops a class full of public methods from dodging the 15-name cap.
+- `PLR0904`: recommended at 10, the same ceiling as a file's public names. A class is a smaller unit than a file, so its interface gets no more room.

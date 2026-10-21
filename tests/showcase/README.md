@@ -83,7 +83,7 @@ Import cycles (C1-C5):
 | A6 | `.../importer_a6.py` | finding (exactly 1) | `from a.b.mod import _x` plus `a.b.mod._x` in the same file; the attribute-form hit on the same (importer, target, name) is deduplicated against the import-form one. |
 | S1 | `catalog/catalog/structure/big_file.py` | finding | 501 physical lines, 1 over the 500-line limit. |
 | S2 | `catalog/catalog/structure/wide_dir/` (finding, 11 entries), `.../wide_dir_ok/` (allowed, 10 entries + `__init__.py` + `__main__.py`) | both | the fan-out limit is 10; the structural files don't count as entries. |
-| S3 | `catalog/catalog/structure/wide_names.py` (finding, 16 public names), `.../wide_names_ok.py` (allowed, 16 names but 1 decorator-registered) | both | the public-name limit is 15; a decorated top-level function doesn't count. |
+| S3 | `catalog/catalog/structure/wide_names.py` (finding, 11 public names), `.../wide_names_ok.py` (allowed, 11 names but 1 decorator-registered) | both | the public-name limit is 10; a decorated top-level function doesn't count. |
 | G1 | `catalog/catalog/gaps/{box,g1_instance_attr}.py` | missed | `obj._y` on an instance needs type information this tool doesn't have. |
 | G2 | `catalog/catalog/gaps/g2_dynamic_access.py` | missed | `getattr(mod, "_x")` and `importlib.import_module("...")` bypass the static import graph entirely. |
 | G3 | `catalog/catalog/gaps/g3_shadowing.py` | missed | a parameter named `mod` anywhere in the file drops the import's binding, so a real module-level `mod._x` is missed. |
