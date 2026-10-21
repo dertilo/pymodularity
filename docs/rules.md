@@ -18,6 +18,11 @@ This file holds the definitions neither of them spells out.
 - `--known-first-party`: one per top-level package/module under `<pkg>` (or `<pkg>/src` if that exists), so deptry does not mistake a hatch-autodetected src-layout package for a transitive dependency of itself (DEP003).
 - merge, not replace: deptry's own `--known-first-party` on the command line would drop a `[tool.deptry] known_first_party` already set in the package's pyproject.toml, so `check` unions the two before building the command.
 - nested package root: `--extend-exclude` removes it from its parent's scan.
+- deptry's own config: deptry reads the `[tool.deptry]` table of each package's `pyproject.toml`, so every setting there applies.
+- used without an import: a CLI tool, a type stub, a driver named in a URL or a plugin loaded by config gets a false DEP002.
+  - fix: list it under `[tool.deptry.per_rule_ignores]` in that package.
+- dev code outside `tests/`: an `eval/` or `scripts/` directory importing dev dependencies gets DEP004.
+  - fix: add the directory to `[tool.deptry] extend_exclude`.
 - skip: `check` skips a package that declares no runtime dependencies or has no `uv.lock` of its own.
 - missing `uv`: `check` exits 2 with an error and never skips silently.
 - first run: `check` creates a `.venv` in each scanned package and downloads its dependencies.
