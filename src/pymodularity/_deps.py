@@ -22,7 +22,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import cast
 
-from pymodularity._parse.packages import find_package_roots
+from pymodularity._parse.packages import find_package_roots, should_skip_dir
 
 _DEPTRY_VERSION = "0.25.1"
 
@@ -83,6 +83,59 @@ def _has_runtime_dependencies(pyproject: Path) -> bool:
     project = cast(dict[str, object], data.get("project", {}))
     deps = project.get("dependencies", [])
     return isinstance(deps, list) and len(cast(list[object], deps)) > 0
+
+
+def _top_level_package_names(repo: Path, pkg: Path) -> tuple[str, ...]:
+    """Top-level first-party package/module names deptry should be told
+    about explicitly: deptry does not treat a hatch-autodetected src-layout
+    package (no explicit `[tool.hatch.build.targets.wheel] packages`) as
+    first-party on its own, so a module importing its own package is
+    wrongly reported as DEP003. `pkg/src` is the base if present, the same
+    src-layout check `_resolve.build_index` uses for import roots;
+    otherwise pkg itself."""
+    base = repo / pkg / "src"
+    if not base.is_dir():
+        base = repo / pkg
+    if not base.is_dir():
+        return ()
+    names: set[str] = set()
+    for entry in base.iterdir():
+        if entry.name.startswith(".") or should_skip_dir(entry.name):
+            continue
+        if entry.is_dir() and (entry / "__init__.py").is_file():
+            names.add(entry.name)
+        elif entry.is_file() and entry.suffix == ".py" and entry.stem != "__init__":
+            names.add(entry.stem)
+    return tuple(sorted(names))
+
+
+def _configured_known_first_party(pyproject: Path) -> tuple[str, ...]:
+    """`[tool.deptry] known_first_party` from the package's own
+    pyproject.toml. deptry's CLI `--known-first-party` replaces this
+    config value rather than merging with it (deptry's own
+    `read_configuration_from_pyproject_toml`: pyproject.toml overrides the
+    default, the command line overrides pyproject.toml -- the command line
+    always wins, it never merges), so callers must merge this in
+    themselves to avoid dropping a user's own setting."""
+    with pyproject.open("rb") as f:
+        data = tomllib.load(f)
+    tool = cast(dict[str, object], data.get("tool", {}))
+    deptry_cfg = cast(dict[str, object], tool.get("deptry", {}))
+    configured = deptry_cfg.get("known_first_party", [])
+    if not isinstance(configured, list):
+        return ()
+    return tuple(str(name) for name in cast(list[object], configured))
+
+
+def _known_first_party_names(repo: Path, pkg: Path, pyproject: Path) -> tuple[str, ...]:
+    """Union of the autodetected top-level package names and whatever the
+    package's own pyproject.toml already configures for deptry."""
+    return tuple(
+        sorted(
+            set(_top_level_package_names(repo, pkg))
+            | set(_configured_known_first_party(pyproject))
+        )
+    )
 
 
 def _nested_exclusions(pkg: Path, package_roots: Sequence[Path]) -> tuple[Path, ...]:
@@ -167,6 +220,8 @@ def _run_deptry_on(
     for rel in _nested_exclusions(pkg, package_roots):
         pattern = "^" + re.escape(rel.as_posix()) + "(/|$)"
         cmd += ["--extend-exclude", pattern]
+    for name in _known_first_party_names(repo, pkg, pkg_abs / "pyproject.toml"):
+        cmd += ["--known-first-party", name]
     json_out = tmp_dir / f"{pkg.as_posix().replace('/', '__') or 'root'}.json"
     cmd += ["--json-output", str(json_out)]
 

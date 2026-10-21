@@ -67,8 +67,11 @@ still checked against its original import. (3) dependency declarations,
 on by default, skipped with
 `--no-deps`: per package root, shells out to a pinned deptry
 (`uv run --directory <pkg> --with deptry==<version> --frozen deptry .
---json-output <tmp>`, nested package roots excluded via
-`--extend-exclude`), needs `uv` on PATH (exit 2 if missing, never a
+--known-first-party <name> --json-output <tmp>`, one `--known-first-party`
+per top-level package under `<pkg>` or `<pkg>/src`, merged with any
+`[tool.deptry] known_first_party` already in the package's pyproject.toml
+since the command line would otherwise replace it, nested package roots
+excluded via `--extend-exclude`), needs `uv` on PATH (exit 2 if missing, never a
 silent skip); the first run creates a `.venv` per scanned package and
 downloads its dependencies. A package is skipped, not scanned, if it
 declares no runtime dependencies or has no uv.lock of its own; any other
