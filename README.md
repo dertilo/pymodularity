@@ -48,6 +48,13 @@ Definitions: [docs/rules.md](docs/rules.md) holds the counting rules, the deptry
 
 ## The 3 subcommands
 
+All 3 also take a repeatable `--exclude PATTERN`, merged with `[tool.pymodularity] exclude` in `<repo>`'s own pyproject.toml.
+Pattern: `fnmatch` against the POSIX path relative to `<repo>`, matched on the path itself or any parent directory.
+Use case: generated code (an OpenAPI client, protobuf stubs) and vendored code.
+Effect: an excluded tree is invisible to every rule and report, except deptry's scan of a kept package that contains it.
+An import from kept code into it behaves like an import of code `pymodularity` can't resolve.
+Details: [docs/rules.md](docs/rules.md#excluding-code).
+
 - `pymodularity check <repo> [--no-deps]`: runs the 4 rules above and prints the findings.
   - exit code: 1 on any finding.
   - `--no-deps`: skips the dependency rule.

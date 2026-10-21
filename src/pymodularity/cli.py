@@ -25,6 +25,14 @@ config keys and env vars, message and file formats, string-keyed registries,
 runtime sys.path edits. Two services with no edge here can still force each
 other's edits. Never read a missing edge as independence.
 
+Every subcommand below also takes a repeatable `--exclude PATTERN` (fnmatch
+against the POSIX path relative to `<repo>`, matched on the path itself or
+any parent directory), merged with `[tool.pymodularity] exclude` in
+`<repo>`'s own pyproject.toml, never replacing it. An excluded tree is
+invisible to every section, except deptry's scan of a kept package root
+that contains it; an import from kept code into excluded code
+then behaves like an import of code this tool can't resolve.
+
 Three subcommands:
 
 `pymodularity graph <repo> --out DIR [--html]` writes the views under DIR.
@@ -91,6 +99,7 @@ and always exits 0: it is a report, never a gate."""
 
 import argparse
 import sys
+from collections.abc import Sequence
 from pathlib import Path
 
 from pymodularity._check import (
@@ -102,7 +111,7 @@ from pymodularity._cycles import count_file_level_cycles, find_all_cycle_finding
 from pymodularity._deps import UvMissing, print_deps_findings, run_dependency_checks
 from pymodularity._metrics import render_metrics
 from pymodularity._parse.graph import build_graph
-from pymodularity._parse.packages import find_package_roots
+from pymodularity._parse.packages import find_package_roots, load_exclude_config
 from pymodularity._scores import compute_scores
 from pymodularity._structure import find_structure_findings, print_structure_findings
 from pymodularity._view_edges import build_view
@@ -110,33 +119,54 @@ from pymodularity._views.render import write_view
 
 __version__ = "0.2.0"
 
+_EXCLUDE_HELP = (
+    "fnmatch pattern (repeatable), against the POSIX path relative to "
+    "repo, matched against a file or any of its parent directories; adds "
+    "to, never replaces, [tool.pymodularity] exclude in repo's own "
+    "pyproject.toml"
+)
+
 
 class _CheckArgs(argparse.Namespace):
     # placeholder default for the static type only; argparse always
     # overwrites it before parse_args() returns
     repo: Path = Path()
     deps: bool = True
+    exclude: tuple[str, ...] = ()
 
 
 class _GraphArgs(argparse.Namespace):
     repo: Path = Path()
     out: Path = Path()
     html: bool = False
+    exclude: tuple[str, ...] = ()
 
 
 class _MetricsArgs(argparse.Namespace):
     repo: Path = Path()
+    exclude: tuple[str, ...] = ()
 
 
-def _run_check(repo: Path, run_deps: bool) -> int:
+def _merged_excludes(repo: Path, cli_excludes: Sequence[str]) -> tuple[str, ...]:
+    """Config (`[tool.pymodularity] exclude` in the repo's own
+    pyproject.toml) merged with `--exclude` from the command line, which
+    adds to the config list rather than replacing it. Order preserved,
+    duplicates dropped."""
+    merged = list(load_exclude_config(repo)) + list(cli_excludes)
+    return tuple(dict.fromkeys(merged))
+
+
+def _run_check(repo: Path, run_deps: bool, excludes: Sequence[str] = ()) -> int:
     """`pymodularity check <repo>`: the import-cycle, privacy-convention and
     (unless `--no-deps`) dependency-declaration checks, findings printed to
-    stdout, exit 1 on any finding, no views written."""
-    graph = build_graph(repo)
+    stdout, exit 1 on any finding, no views written. `excludes` makes a
+    matching tree invisible to every section; an import from kept code
+    into excluded code then behaves like an import of unresolvable code."""
+    graph = build_graph(repo, excludes)
 
     cycle_findings = find_all_cycle_findings(graph.dirs_with_py, graph.edge_names)
 
-    package_roots = find_package_roots(repo)
+    package_roots = find_package_roots(repo, excludes)
     privacy_violations = sorted(
         find_privacy_violations(graph.edge_names, package_roots)
         + find_privacy_violations(
@@ -156,7 +186,7 @@ def _run_check(repo: Path, run_deps: bool) -> int:
 
     deps_finding = False
     if run_deps:
-        deps_result = run_dependency_checks(repo)
+        deps_result = run_dependency_checks(repo, excludes)
         if isinstance(deps_result, UvMissing):
             print(
                 "error: `uv` not found on PATH; the dependency-declaration "
@@ -172,17 +202,21 @@ def _run_check(repo: Path, run_deps: bool) -> int:
         graph.dirs_with_py,
         graph.defined_names,
         graph.registered_names,
+        excludes,
     )
     structure_finding = print_structure_findings(structure_findings)
 
     return 1 if any_finding or deps_finding or structure_finding else 0
 
 
-def _run_graph(repo: Path, out_dir: Path, write_html: bool) -> int:
+def _run_graph(
+    repo: Path, out_dir: Path, write_html: bool, excludes: Sequence[str] = ()
+) -> int:
     """`pymodularity graph <repo> --out DIR [--html]`: writes one mermaid
-    view per directory under DIR."""
+    view per directory under DIR. `excludes` makes a matching tree
+    invisible, no view written for it."""
     out_dir.mkdir(parents=True, exist_ok=True)
-    graph = build_graph(repo)
+    graph = build_graph(repo, excludes)
     scores = compute_scores(graph.dirs_with_py, graph.adj, graph.radj)
 
     written = 0
@@ -205,10 +239,11 @@ def _run_graph(repo: Path, out_dir: Path, write_html: bool) -> int:
     return 0
 
 
-def _run_metrics(repo: Path) -> int:
+def _run_metrics(repo: Path, excludes: Sequence[str] = ()) -> int:
     """`pymodularity metrics <repo>`: prints a coupling report to stdout,
-    always exits 0."""
-    graph = build_graph(repo)
+    always exits 0. `excludes` makes a matching tree invisible to the
+    report."""
+    graph = build_graph(repo, excludes)
     scores = compute_scores(graph.dirs_with_py, graph.adj, graph.radj)
 
     print(
@@ -254,6 +289,7 @@ def main() -> int:
         action="store_false",
         help="skip the dependency-declaration rule (deptry), on by default",
     )
+    check_parser.add_argument("--exclude", action="append", help=_EXCLUDE_HELP)
 
     graph_parser = subparsers.add_parser("graph", help="write mermaid views")
     graph_parser.add_argument("repo", type=Path)
@@ -266,6 +302,7 @@ def main() -> int:
             + "browser to load mermaid from a CDN"
         ),
     )
+    graph_parser.add_argument("--exclude", action="append", help=_EXCLUDE_HELP)
 
     metrics_parser = subparsers.add_parser(
         "metrics",
@@ -276,23 +313,29 @@ def main() -> int:
         ),
     )
     metrics_parser.add_argument("repo", type=Path)
+    metrics_parser.add_argument("--exclude", action="append", help=_EXCLUDE_HELP)
 
     args = parser.parse_args()
 
     if args.command == "check":
         check_args = _CheckArgs()
-        check_args.repo = args.repo
+        check_args.repo = args.repo.resolve()
         check_args.deps = args.deps
-        return _run_check(check_args.repo.resolve(), check_args.deps)
+        check_args.exclude = _merged_excludes(check_args.repo, args.exclude or [])
+        return _run_check(check_args.repo, check_args.deps, check_args.exclude)
     if args.command == "graph":
         graph_args = _GraphArgs()
-        graph_args.repo = args.repo
+        graph_args.repo = args.repo.resolve()
         graph_args.out = args.out
         graph_args.html = args.html
-        return _run_graph(graph_args.repo.resolve(), graph_args.out, graph_args.html)
+        graph_args.exclude = _merged_excludes(graph_args.repo, args.exclude or [])
+        return _run_graph(
+            graph_args.repo, graph_args.out, graph_args.html, graph_args.exclude
+        )
     metrics_args = _MetricsArgs()
-    metrics_args.repo = args.repo
-    return _run_metrics(metrics_args.repo.resolve())
+    metrics_args.repo = args.repo.resolve()
+    metrics_args.exclude = _merged_excludes(metrics_args.repo, args.exclude or [])
+    return _run_metrics(metrics_args.repo, metrics_args.exclude)
 
 
 if __name__ == "__main__":

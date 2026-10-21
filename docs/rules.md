@@ -11,6 +11,18 @@ This file holds the definitions neither of them spells out.
 - attribute form: findings from `mod._x` end with ` (via attribute access)`.
 - deduplication: an attribute hop that an import statement in the same file already reaches gives no second finding.
 
+## Excluding code
+
+- config: `exclude = [...]` under `[tool.pymodularity]` in the repo root's own `pyproject.toml`. A missing file or table means no excludes.
+- CLI: a repeatable `--exclude PATTERN` on `check`, `graph` and `metrics`. CLI values merge with the config list, never replace it.
+- matching: each entry is an `fnmatch` pattern against the POSIX path relative to the repo root. A file is excluded if its own path or any parent directory's path matches.
+- depth: `mcp-poi/ds1_client` excludes that one tree.
+- depth, nested: `*/generated` excludes every `generated` directory below the repo root. A `generated` directory at the root needs the plain pattern `generated`.
+- effect: an excluded tree is invisible to cycles, private items, structure, metrics and graph.
+- effect on deptry: a package root under an excluded tree gets no deptry run. deptry still scans an excluded subtree inside a kept package root, because that subtree's imports are runtime dependencies of the package.
+- imports: an import from kept code into excluded code behaves like an import of code the tool can't resolve.
+- use cases: generated code (an OpenAPI client, protobuf stubs) and vendored code.
+
 ## Dependency declarations
 
 - package root: a directory whose `pyproject.toml` has a `[project]` table.

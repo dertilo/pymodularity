@@ -101,9 +101,9 @@ def _owning_package(rel: Path, package_roots: Sequence[Path]) -> Path:
 
 
 def _find_package_size_violations(
-    repo: Path, py_files: Sequence[Path]
+    repo: Path, py_files: Sequence[Path], excludes: Sequence[str]
 ) -> tuple[_PackageTooManyFiles, ...]:
-    package_roots = find_package_roots(repo)
+    package_roots = find_package_roots(repo, excludes)
     counts: dict[Path, int] = {}
     for f in py_files:
         root = _owning_package(f.relative_to(repo), package_roots)
@@ -137,11 +137,12 @@ def find_structure_findings(
     dirs_with_py: AbstractSet[Path],
     defined_names: Mapping[Path, frozenset[str]],
     registered_names: Mapping[Path, frozenset[str]],
+    excludes: Sequence[str] = (),
 ) -> _StructureFindings:
     return _StructureFindings(
         too_long=_find_file_size_violations(repo, py_files),
         too_many_entries=_find_dir_entry_violations(dirs_with_py, py_files, repo),
-        package_too_big=_find_package_size_violations(repo, py_files),
+        package_too_big=_find_package_size_violations(repo, py_files, excludes),
         too_wide=_find_file_width_violations(defined_names, registered_names),
     )
 

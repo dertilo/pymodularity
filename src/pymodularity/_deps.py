@@ -244,13 +244,17 @@ class UvMissing:
     all, never a silent skip."""
 
 
-def run_dependency_checks(repo: Path) -> _DepsResult | UvMissing:
+def run_dependency_checks(
+    repo: Path, excludes: Sequence[str] = ()
+) -> _DepsResult | UvMissing:
     """Scans every package root under repo with deptry, one uv-managed
-    environment per package."""
+    environment per package. `excludes` prunes matching trees out of
+    package-root discovery first, so a package root entirely under an
+    excluded tree gets no deptry run at all."""
     if shutil.which("uv") is None:
         return UvMissing()
 
-    package_roots = find_package_roots(repo)
+    package_roots = find_package_roots(repo, excludes)
     findings: list[_DepFinding] = []
     skipped: list[_Skipped] = []
     failed: list[_Failed] = []

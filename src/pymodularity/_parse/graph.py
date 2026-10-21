@@ -25,7 +25,11 @@ from pymodularity._parse.attrs import (
     locally_bound_names,
 )
 from pymodularity._parse.imports import resolve_import_node
-from pymodularity._parse.packages import find_package_roots, should_skip_dir
+from pymodularity._parse.packages import (
+    find_package_roots,
+    is_path_excluded,
+    should_skip_dir,
+)
 
 # (importer_rel, target_rel) file-level import edge
 EdgeKey = tuple[Path, Path]
@@ -40,12 +44,21 @@ def _is_test_file(name: str) -> bool:
     return name == "conftest.py" or name.startswith("test_") or name.endswith("_test.py")
 
 
-def _find_py_files(repo: Path) -> tuple[Path, ...]:
+def _find_py_files(repo: Path, excludes: Sequence[str] = ()) -> tuple[Path, ...]:
     files: list[Path] = []
     for dirpath, dirnames, filenames in os.walk(repo):
-        dirnames[:] = [d for d in dirnames if not should_skip_dir(d)]
+        rel_dir = Path(dirpath).relative_to(repo)
+        dirnames[:] = [
+            d
+            for d in dirnames
+            if not should_skip_dir(d) and not is_path_excluded(rel_dir / d, excludes)
+        ]
         for fn in filenames:
-            if fn.endswith(".py") and not _is_test_file(fn):
+            if (
+                fn.endswith(".py")
+                and not _is_test_file(fn)
+                and not is_path_excluded(rel_dir / fn, excludes)
+            ):
                 files.append(Path(dirpath) / fn)
     return tuple(files)
 
@@ -298,14 +311,17 @@ class _RepoGraph:
     radj: Mapping[Path, frozenset[Path]]
 
 
-def build_graph(repo: Path) -> _RepoGraph:
+def build_graph(repo: Path, excludes: Sequence[str] = ()) -> _RepoGraph:
     """Parses `repo` once and builds every structure every subcommand needs.
-    Prints ambiguous-import warnings to stderr along the way. Reach and
+    `excludes` (fnmatch patterns, relative to `repo`) prunes matching
+    trees out of the walk entirely, so excluded code is invisible here and
+    downstream in every section built from this graph. Prints
+    ambiguous-import warnings to stderr along the way. Reach and
     file/directory scores are not computed here -- `check` never uses
     them, so `graph` and `metrics` compute them in their own run_*
     path."""
-    py_files = _find_py_files(repo)
-    package_roots = find_package_roots(repo)
+    py_files = _find_py_files(repo, excludes)
+    package_roots = find_package_roots(repo, excludes)
     idx: Index = build_index(repo, py_files, package_roots)
     collected = _collect_edges(repo, py_files, idx.module_candidates, idx.import_roots)
 

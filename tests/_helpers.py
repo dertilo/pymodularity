@@ -30,9 +30,11 @@ def run_check(
     )
 
 
-def run_metrics(repo: Path) -> subprocess.CompletedProcess[str]:
+def run_metrics(
+    repo: Path, extra_args: tuple[str, ...] = ()
+) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        [sys.executable, "-m", "pymodularity", "metrics", str(repo)],
+        [sys.executable, "-m", "pymodularity", "metrics", str(repo), *extra_args],
         capture_output=True,
         text=True,
         check=False,
