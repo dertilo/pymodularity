@@ -1,0 +1,30 @@
+// M5: a private directory directly below a package root. Split out of
+// privacy_modules.dot, because a yellow catalog/catalog there would cover
+// the other cases' importers.
+// Render: dot -Tpng -Gdpi=150 privacy_root.dot -o privacy_root.png
+digraph privacy_root {
+  rankdir=LR;
+  node [shape=box, fontname="Helvetica", fontsize=11];
+  graph [fontname="Helvetica", fontsize=11];
+  edge [fontname="Helvetica", fontsize=10];
+
+  subgraph cluster_warehouse {
+    label="warehouse/warehouse (package root)";
+    style=dashed;
+    m5_uses_py [label="m5_uses.py"];
+  }
+
+  subgraph cluster_catalog_pkg {
+    label="catalog/catalog (package root, owner of _internal/)";
+    style="dashed,filled"; fillcolor="#fff6cc";
+
+    subgraph cluster_catalog_internal {
+      label="_internal";
+      style=solid;
+      _internal_tax [label="tax.py", style=bold];
+    }
+  }
+
+  // M5: finding, other package root, package-root-level private dir
+  m5_uses_py -> _internal_tax [label="M5", color=red];
+}

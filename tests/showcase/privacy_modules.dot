@@ -1,5 +1,5 @@
-// Module/attribute privacy cases M1-M5, A1-A4, A6. N1-N3 and A5 (name
-// privacy) live in privacy_names.dot; G1/G2/G3/G5 (import-drawing gap
+// Module/attribute privacy cases M1-M4, A1-A4, A6. M5 lives in
+// privacy_root.dot; N1-N3 and A5 (name privacy) live in privacy_names.dot; G1/G2/G3/G5 (import-drawing gap
 // cases) live in gaps.dot.
 // Render: dot -Tpng -Gdpi=150 privacy_modules.dot -o privacy_modules.png
 digraph privacy_modules {
@@ -12,18 +12,11 @@ digraph privacy_modules {
     label="warehouse/warehouse (package root)";
     style=dashed;
     m4_uses_py [label="m4_uses.py"];
-    m5_uses_py [label="m5_uses.py"];
   }
 
   subgraph cluster_catalog_pkg {
-    label="catalog/catalog  (owner of _internal/)";
+    label="catalog/catalog (package root)";
     style=dashed;
-
-    subgraph cluster_catalog_internal {
-      label="_internal";
-      style=solid;
-      _internal_tax [label="tax.py", style=bold];
-    }
 
     subgraph cluster_privacy {
       label="privacy";
@@ -86,8 +79,6 @@ digraph privacy_modules {
   parent_peek -> pricing_py [label="M3", color=red];
   // M4: finding, other package root
   m4_uses_py -> pricing_py [label="M4", color=red];
-  // M5: finding, other package root, package-root-level private dir
-  m5_uses_py -> _internal_tax [label="M5", color=red];
 
   // A1-A3, A6: finding, attribute-form access to mod.py's _x
   importer_a1_py -> mod_py [label="A1 _x", color=red];

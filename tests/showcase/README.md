@@ -1,32 +1,52 @@
 # `tests/showcase/`
 
-A small static monorepo — committed code, not generated at test time — that
-demonstrates every rule `pymodularity check` enforces and its documented
-blind spots. It serves two purposes: a reader can browse it case by case,
-and `tests/test_showcase.py` runs `check --no-deps` on it and diffs stdout
-and stderr against `expected_check.txt`/`expected_stderr.txt`, a golden
-test for the whole rule set at once.
+A small static monorepo of committed code, not generated at test time.
+It demonstrates every rule `pymodularity check` enforces and its documented blind spots.
+
+- browsing: a reader can browse it case by case.
+- golden test: `tests/test_showcase.py` runs `check --no-deps` on it and diffs stdout and stderr against `expected_check.txt` and `expected_stderr.txt`.
 
 3 package roots stand in for 3 services of a toy bookstore: `catalog/`,
 `billing/`, `warehouse/`. Every case's code carries a `# <ID>` comment at
 its first line (or inline on the triggering statement).
 
+## Case groups
+
+- **C, cycles:** files or directories that import each other in a loop.
+- **M, private modules:** a `_`-prefixed module or directory imported from outside its owner.
+- **N, private names:** a `_`-prefixed name imported from outside its owner.
+- **A, attribute access:** a private module or name reached as `mod._x` instead of imported.
+- **S, structure:** a file over the line limit, a directory over the entry limit, or a module over the public-name limit.
+- **G, gaps:** the documented blind spots, plus 2 import-resolution edge cases (G5, G6).
+
 ## Diagrams
 
-Directories are nested boxes mirroring the real tree. The shaded box is
-the owner: a directory for private modules and `__init__.py` names, the
-file itself for a private name in a regular file; it is labelled "owner
-of ...". Files are plain boxes, the private target is bold-bordered.
-Edge colour: green = allowed, red = finding, grey dashed = missed (a
-documented gap), red dotted = counts as a finding but via a special
-import kind (TYPE_CHECKING-only or in-function import). Edge labels
-carry the case ID and, for name cases, the private name. S cases are
-table-only (no edge to draw). Re-render with
-`dot -Tpng -Gdpi=150 <name>.dot -o <name>.png` from this directory.
+Legend:
 
-Module/attribute privacy (M1-M5, A1-A4, A6):
+- **Box with a title:** a directory, nested as in the real tree.
+- **Dashed box:** a package root.
+- **Box without a title:** a file.
+- **Bold border:** the private target.
+- **Title "owner of ...":** the owner of the private item.
+  - private module or `__init__.py` name: the owner is a directory.
+  - private name in a regular file: the owner is that file.
+- **Yellow area:** code inside it may use the private item. An edge from outside is a finding.
+- **Green edge:** an allowed import.
+- **Red edge:** a finding.
+- **Red dotted edge:** a finding through a special import kind, either `TYPE_CHECKING`-only or in-function.
+- **Grey dashed edge:** a missed import, i.e. a documented gap.
+- **Edge label:** the case ID, plus the private name for name cases.
+- **S cases:** no diagram, because they have no edge to draw.
+
+Re-render with `dot -Tpng -Gdpi=150 <name>.dot -o <name>.png` from this directory.
+
+Module/attribute privacy (M1-M4, A1-A4, A6):
 
 ![privacy (module/attribute cases)](privacy_modules.png)
+
+Private directory directly below a package root (M5):
+
+![privacy (package-root case)](privacy_root.png)
 
 Name privacy (N1-N3, A5):
 
@@ -73,5 +93,4 @@ Import cycles (C1-C5):
 | G7 | `billing/billing/g7/{producer,consumer}.py` | missed (no edge) | the 2 files are coupled only through a string registry key / env var, never an import. |
 | G8 | `catalog/catalog/gaps/tests/breaks_privacy_g8.py` | skipped | sits inside a directory literally named `tests`, which the tool (and pytest, since the file isn't named `test_*.py`/`*_test.py`) always skips. |
 
-See the main [README](../../README.md)'s rules section and blind-spots
-section for the prose each row of this table backs.
+Rule definitions: [docs/rules.md](../../docs/rules.md).
