@@ -254,7 +254,7 @@ def _compute_misplaced(
             # tie-break deterministically: smallest path among the ties
             other_dir = min(d for d, c in other_counts.items() if c == best)
             other = best
-        if other >= 3 and other > own:
+        if other >= 3 and 2 * other > len(partners):
             imported_by = sum(1 for p in importers if p.parent == other_dir)
             imports = sum(1 for p in imports_of if p.parent == other_dir)
             results.append(_Misplaced(f, own, other, other_dir, imported_by, imports))
@@ -434,8 +434,10 @@ def render_metrics(
     lines.append(
         "partners(f) = files f imports directly plus files importing f "
         + "directly; own = partners in f's own parent directory; other = "
-        + "the largest count among all other parent directories, naming "
-        + "that directory; misplaced when other >= 3 and other > own. "
+        + "the largest count among all other parent directories (a "
+        + "subdirectory of f's own directory counts as other), naming "
+        + "that directory; misplaced when other >= 3 and other exceeds "
+        + "half of all partners. "
         + "'imported by' = those other-directory partners that import f; "
         + "'imports' = those other-directory partners f imports; a "
         + "partner doing both counts in both, so the two may sum to more "

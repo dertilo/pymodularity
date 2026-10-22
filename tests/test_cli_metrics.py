@@ -276,10 +276,12 @@ def test_metrics_misplaced_files_table(tmp_path: Path) -> None:
     by=1 (`w`), imports=3 (`x`, `y`, `z`) -> misplaced. `dirA/h.py` is a tie
     case: 3 own-directory partners (`g`, `i`, `j`, each importing or
     imported by `h`) and 3 other-directory partners in `dirB` (`p`, `q`,
-    `r`) -> own=3, other=3, not misplaced since other must be strictly
-    greater than own. Every other file in the tree has at most 1 partner
-    in any single other directory (other < 3), so only `f.py` is
-    misplaced: 1 of 12 files."""
+    `r`) -> own=3, other=3 of 6 partners, not misplaced since other must
+    exceed half of all partners. `dirA/k.py` is the spread case: imported
+    by 3 files in each of `dirB`, `dirC`, `dirD` -> own=0, other=3 of 9,
+    not misplaced for the same reason. Every other file in the tree has at
+    most 1 partner in any single other directory (other < 3), so only
+    `f.py` is misplaced: 1 of 22 files."""
     write(tmp_path / "pyproject.toml", '[project]\nname = "pkgx"\nversion = "0"\n')
     write(
         tmp_path / "dirA/f.py",
@@ -299,11 +301,16 @@ def test_metrics_misplaced_files_table(tmp_path: Path) -> None:
     write(tmp_path / "dirB/p.py", "x = 1\n")
     write(tmp_path / "dirB/q.py", "x = 1\n")
     write(tmp_path / "dirB/r.py", "x = 1\n")
+    write(tmp_path / "dirA/k.py", "x = 1\n")
+    for d in ("dirB", "dirC", "dirD"):
+        for name in ("k1", "k2", "k3"):
+            write(tmp_path / f"{d}/{name}.py", "import dirA.k\n")
 
     result = run_metrics(tmp_path)
 
     assert result.returncode == 0
     section = result.stdout.split("## Misplaced files")[1]
-    assert "1 of 12 files misplaced." in section
+    assert "1 of 22 files misplaced." in section
     assert "| dirA/f.py | 0 | 4 | 1 | 3 | dirB |" in section
     assert "| dirA/h.py |" not in section
+    assert "| dirA/k.py |" not in section
