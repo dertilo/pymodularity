@@ -100,6 +100,7 @@ and always exits 0: it is a report, never a gate."""
 import argparse
 import sys
 from collections.abc import Sequence
+from importlib.metadata import version
 from pathlib import Path
 
 from pymodularity._check import (
@@ -117,7 +118,7 @@ from pymodularity._structure import find_structure_findings, print_structure_fin
 from pymodularity._view_edges import build_view
 from pymodularity._views.render import write_view
 
-__version__ = "0.2.0"
+__version__ = version("pymodularity")
 
 _EXCLUDE_HELP = (
     "fnmatch pattern (repeatable), against the POSIX path relative to "
