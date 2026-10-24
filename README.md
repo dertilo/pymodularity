@@ -42,7 +42,7 @@ Each finding names the importing file, the target and the owner.
   - no config, no baseline.
   - ceiling: a limit marks the size that is clearly too much. It is no target.
   - below a limit: a smaller interface is still better. `metrics` reports interface width and exposure share.
-- **Names carry a scope:** a scanned file's stem, and a directory holding scanned code, need at least 2 `_`-separated words.
+- **Names carry a scope:** a scanned file's stem, and a directory holding scanned code, need at least 2 `_`-separated words. The finding asks for a thought, not a second word: what must sit together here. Split, move, merge or rename follows from the answer.
   - exempt: `__init__`, `__main__`, `conftest`, `setup`, `wsgi`, `asgi`, `_version`, a package root, `src`, `tests`, `migrations`, `alembic`.
   - details: [docs/rules.md](docs/rules.md#names-carry-a-scope).
 
@@ -71,7 +71,7 @@ Details: [docs/rules.md](docs/rules.md#excluding-code).
   - interface width: the names other code imports from a unit.
   - exposure share: how much of what a file defines other code uses.
   - entry files: how much of a directory outside code reaches into.
-  - misplaced files: files whose closest partners sit mostly in another directory.
+  - misplaced files: files whose importers sit mostly in another directory.
   - exit code: always 0, because the report is no gate.
 
 ## Blind spots

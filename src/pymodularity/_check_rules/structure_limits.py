@@ -228,9 +228,12 @@ def find_structure_findings(
 
 _SCOPE_GUIDANCE = (
     "  one word admits everything of its kind, so a file or directory grows "
-    "with its parent. Add a word that sets a scope, which concept or which "
-    "part, not a longer kind name: `model_classes.py` or "
-    "`github_connector.py` pass the rule and miss its point."
+    "with its parent. The fix is a thought, not a second word: what does this "
+    "unit hold that must sit together, and what in it does not belong? The "
+    "answer may be a split, a move, a merge with a neighbour, or only a name. "
+    "A name found that way sets a scope by itself, which concept or which "
+    "part. `model_classes.py` or `github_connector.py` pass the rule and "
+    "miss its point."
 )
 
 

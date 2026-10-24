@@ -216,15 +216,13 @@ def _compute_entry_files(
 
 @dataclass(frozen=True, slots=True)
 class _Misplaced:
-    """A file whose direct import partners (files it imports plus files
-    importing it, from the same file graph the scores use) cluster more
-    heavily in some other directory than in its own."""
+    """A file whose direct importers (from the same file graph the scores
+    use) cluster more heavily in some other directory than in its own."""
 
     path: Path
     own: int
     other: int
     other_dir: Path
-    imported_by: int
     imports: int
 
 
@@ -237,7 +235,7 @@ def _compute_misplaced(
     for f in nodes:
         importers = radj.get(f, set()) - {f}
         imports_of = adj.get(f, set()) - {f}
-        partners = importers | imports_of
+        partners = importers
         own_dir = f.parent
         own = 0
         other_counts: dict[Path, int] = {}
@@ -255,9 +253,8 @@ def _compute_misplaced(
             other_dir = min(d for d, c in other_counts.items() if c == best)
             other = best
         if other >= 3 and 2 * other > len(partners):
-            imported_by = sum(1 for p in importers if p.parent == other_dir)
             imports = sum(1 for p in imports_of if p.parent == other_dir)
-            results.append(_Misplaced(f, own, other, other_dir, imported_by, imports))
+            results.append(_Misplaced(f, own, other, other_dir, imports))
     return tuple(results)
 
 
@@ -432,25 +429,22 @@ def render_metrics(
     lines.append(f"{len(misplaced)} of {n} files misplaced.")
     lines.append("")
     lines.append(
-        "partners(f) = files f imports directly plus files importing f "
-        + "directly; own = partners in f's own parent directory; other = "
-        + "the largest count among all other parent directories (a "
-        + "subdirectory of f's own directory counts as other), naming "
-        + "that directory; misplaced when other >= 3 and other exceeds "
-        + "half of all partners. "
-        + "'imported by' = those other-directory partners that import f; "
-        + "'imports' = those other-directory partners f imports; a "
-        + "partner doing both counts in both, so the two may sum to more "
-        + "than other. Sorted by other - own desc, then path."
+        "partners(f) = files importing f directly; own = partners in f's "
+        + "own parent directory; other = the largest count among all "
+        + "other parent directories (a subdirectory of f's own directory "
+        + "counts as other), naming that directory; misplaced when "
+        + "other >= 3 and other exceeds half of all partners. "
+        + "'imports' = those other-directory files that f itself imports, "
+        + "marking a mutual dependency. Sorted by other - own desc, then "
+        + "path."
     )
     lines.append("")
-    lines.append("| file | own | other | imported by | imports | other directory |")
-    lines.append("| --- | --- | --- | --- | --- | --- |")
+    lines.append("| file | own | other | imports | other directory |")
+    lines.append("| --- | --- | --- | --- | --- |")
     for m in misplaced:
         other_dir_label = "repo root" if m.other_dir == Path(".") else str(m.other_dir)
         lines.append(
-            f"| {m.path} | {m.own} | {m.other} | {m.imported_by} | {m.imports} "
-            + f"| {other_dir_label} |"
+            f"| {m.path} | {m.own} | {m.other} | {m.imports} | {other_dir_label} |"
         )
     lines.append("")
 
