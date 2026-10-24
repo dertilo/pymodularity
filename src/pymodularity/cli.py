@@ -40,7 +40,7 @@ Three subcommands:
 directory nodes) alongside index.md; the browser needs network access to
 load mermaid from a CDN.
 
-`pymodularity check <repo>` runs five convention checks and prints findings
+`pymodularity check <repo>` runs six convention checks and prints findings
 to stdout, exit 1 on any finding: (1) no import cycles, at every directory
 level (any SCC with more than 1 node in any directory's view, computed the
 same way the view's own Cycles section is, TYPE_CHECKING and
@@ -90,7 +90,12 @@ physical lines per file, 10 entries per directory (`__init__.py`/
 top-level names per file, and a public top-level name that no scanned
 file imports (a file no scanned file imports at all, `__init__.py` and
 `__main__.py`, and a name reachable through a whole-module import, are all
-exempt).
+exempt). (6) names carry a scope: a scanned file's stem, and a directory
+holding scanned code, must have at least 2 `_`-separated words (after
+stripping leading underscores), fixed, no config. Exempt files:
+`__init__`, `__main__`, `conftest`, `setup`, `wsgi`, `asgi`, `_version`
+(`main.py` is not exempt). Exempt directories: a package root, and `src`,
+`tests`, `migrations`, `alembic`.
 
 `pymodularity metrics <repo>` prints a coupling report to stdout on the same
 file graph (reach and score per file and per directory, interface width

@@ -154,7 +154,7 @@ def test_attr_form_third_party_base_name_no_finding(tmp_path: Path) -> None:
     scanned repo (stdlib/third-party) must not crash and must not produce
     an attribute-form finding -- the binding is simply never recorded."""
     write(tmp_path / "pyproject.toml", '[project]\nname = "fix"\nversion = "0"\n')
-    write(tmp_path / "use.py", "import os\n\nos.path._getfinalpathname\n")
+    write(tmp_path / "use_os.py", "import os\n\nos.path._getfinalpathname\n")
 
     result = run_check(tmp_path)
 
@@ -232,13 +232,13 @@ def test_attr_form_from_import_class_binds_nothing(tmp_path: Path) -> None:
     `Klass._x` must not be mistaken for the attribute form, since "Klass"
     never enters `binding`."""
     write(tmp_path / "pyproject.toml", '[project]\nname = "fix"\nversion = "0"\n')
-    write(tmp_path / "a/__init__.py", "")
-    write(tmp_path / "a/b/__init__.py", "")
-    write(tmp_path / "a/b/mod.py", "class Klass:\n    _x = 1\n")
-    write(tmp_path / "a/c/__init__.py", "")
+    write(tmp_path / "pkg_a/__init__.py", "")
+    write(tmp_path / "pkg_a/sub_b/__init__.py", "")
+    write(tmp_path / "pkg_a/sub_b/target_mod.py", "class Klass:\n    _x = 1\n")
+    write(tmp_path / "pkg_a/sub_c/__init__.py", "")
     write(
-        tmp_path / "a/c/use.py",
-        "from a.b.mod import Klass\n\nKlass._x\n",
+        tmp_path / "pkg_a/sub_c/consumer_use.py",
+        "from pkg_a.sub_b.target_mod import Klass\n\nKlass._x\n",
     )
 
     result = run_check(tmp_path)
@@ -253,11 +253,11 @@ def test_attr_form_shadowing_gives_no_finding(tmp_path: Path) -> None:
     that name from `binding` for the whole file -- a false finding becomes
     a missed one."""
     write(tmp_path / "pyproject.toml", '[project]\nname = "fix"\nversion = "0"\n')
-    write(tmp_path / "pkg/__init__.py", "")
-    write(tmp_path / "pkg/mod.py", "_cache = 1\n")
+    write(tmp_path / "app_pkg/__init__.py", "")
+    write(tmp_path / "app_pkg/target_mod.py", "_cache = 1\n")
     write(
-        tmp_path / "use.py",
-        "from pkg import mod\n\n\ndef g(mod):\n    return mod._cache\n",
+        tmp_path / "consumer_use.py",
+        "from app_pkg import target_mod\n\n\ndef g(target_mod):\n    return target_mod._cache\n",
     )
 
     result = run_check(tmp_path)

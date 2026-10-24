@@ -185,9 +185,9 @@ def test_no_findings_exits_zero(tmp_path: Path) -> None:
     Catches an implementation that always reports a finding regardless of
     the graph (the inverse do-it-always failure to the one above)."""
     write(tmp_path / "pyproject.toml", '[project]\nname = "clean"\nversion = "0"\n')
-    write(tmp_path / "pkg/__init__.py", "")
-    write(tmp_path / "pkg/m1.py", "x = 1\n")
-    write(tmp_path / "pkg/m2.py", "from pkg.m1 import x\n")
+    write(tmp_path / "app_pkg/__init__.py", "")
+    write(tmp_path / "app_pkg/module_one.py", "x = 1\n")
+    write(tmp_path / "app_pkg/module_two.py", "from app_pkg.module_one import x\n")
 
     result = run_check(tmp_path)
 
@@ -267,8 +267,8 @@ def test_deps_rule_skips_package_with_no_runtime_dependencies(tmp_path: Path) ->
     """A package whose pyproject.toml has no [project].dependencies must be
     skipped (not scanned, not a failure), exit 0, section present."""
     write(tmp_path / "pyproject.toml", '[project]\nname = "nodep"\nversion = "0"\n')
-    write(tmp_path / "pkg/__init__.py", "")
-    write(tmp_path / "pkg/m1.py", "x = 1\n")
+    write(tmp_path / "app_pkg/__init__.py", "")
+    write(tmp_path / "app_pkg/module_one.py", "x = 1\n")
 
     result = run_check(tmp_path)
 
@@ -281,8 +281,8 @@ def test_no_deps_flag_omits_dependency_section(tmp_path: Path) -> None:
     """`--no-deps` must skip the rule entirely: no section at all, not an
     empty one."""
     write(tmp_path / "pyproject.toml", '[project]\nname = "nodep"\nversion = "0"\n')
-    write(tmp_path / "pkg/__init__.py", "")
-    write(tmp_path / "pkg/m1.py", "x = 1\n")
+    write(tmp_path / "app_pkg/__init__.py", "")
+    write(tmp_path / "app_pkg/module_one.py", "x = 1\n")
 
     result = run_check(tmp_path, extra_args=("--no-deps",))
 

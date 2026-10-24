@@ -68,9 +68,12 @@ def test_nested_glob_pattern_matches_at_depth(tmp_path: Path) -> None:
     only directly under the repo root. Catches an fnmatch call against
     just the directory's basename instead of its full relative path."""
     write(tmp_path / "pyproject.toml", '[project]\nname = "repo"\nversion = "0"\n')
-    write(tmp_path / "a/b/generated/__init__.py", "")
-    write(tmp_path / "a/b/generated/big.py", "".join(f"n{i} = {i}\n" for i in range(11)))
-    write(tmp_path / "a/keep.py", "x = 1\n")
+    write(tmp_path / "top_a/mid_b/generated/__init__.py", "")
+    write(
+        tmp_path / "top_a/mid_b/generated/big.py",
+        "".join(f"n{i} = {i}\n" for i in range(11)),
+    )
+    write(tmp_path / "top_a/entry_point.py", "x = 1\n")
 
     result = run_check(tmp_path, extra_args=("--exclude", "*/generated"))
 

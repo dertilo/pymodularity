@@ -42,6 +42,9 @@ Each finding names the importing file, the target and the owner.
   - no config, no baseline.
   - ceiling: a limit marks the size that is clearly too much. It is no target.
   - below a limit: a smaller interface is still better. `metrics` reports interface width and exposure share.
+- **Names carry a scope:** a scanned file's stem, and a directory holding scanned code, need at least 2 `_`-separated words.
+  - exempt: `__init__`, `__main__`, `conftest`, `setup`, `wsgi`, `asgi`, `_version`, a package root, `src`, `tests`, `migrations`, `alembic`.
+  - details: [docs/rules.md](docs/rules.md#names-carry-a-scope).
 
 Worked cases: the [showcase](tests/showcase/README.md) shows each rule except the dependency rule as allowed and finding cases.
 Definitions: [docs/rules.md](docs/rules.md) holds the counting rules, the deptry run, and the ruff rules for functions and classes.
@@ -55,7 +58,7 @@ Effect: an excluded tree is invisible to every rule and report, except deptry's 
 An import from kept code into it behaves like an import of code `pymodularity` can't resolve.
 Details: [docs/rules.md](docs/rules.md#excluding-code).
 
-- `pymodularity check <repo> [--no-deps]`: runs the 4 rules above and prints the findings.
+- `pymodularity check <repo> [--no-deps]`: runs the 5 rules above and prints the findings.
   - exit code: 1 on any finding.
   - `--no-deps`: skips the dependency rule.
 - `pymodularity graph <repo> --out DIR [--html]`: writes one mermaid view per directory under `DIR`.

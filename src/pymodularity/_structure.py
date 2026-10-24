@@ -1,7 +1,7 @@
 """The structure-limit rules (file size, directory fan-out, package size,
-public top-level-name count per file) `pymodularity check` enforces. All
-limits are fixed constants, no config, no baseline. Imported only by
-`cli`."""
+public top-level-name count per file, and a file/directory name carrying
+at least 2 words) `pymodularity check` enforces. All limits are fixed
+constants, no config, no baseline. Imported only by `cli`."""
 
 from collections.abc import Mapping, Sequence
 from collections.abc import Set as AbstractSet
@@ -14,10 +14,36 @@ _MAX_FILE_LINES = 500
 _MAX_DIR_ENTRIES = 10
 _MAX_PACKAGE_FILES = 100
 _MAX_PUBLIC_NAMES = 10
+_MIN_NAME_WORDS = 2
 
 # __init__.py and __main__.py don't count as directory entries (rule 2);
 # every other scanned file counts fully for every rule.
 _STRUCTURAL_FILES = frozenset({"__init__.py", "__main__.py"})
+
+# Stems exempt from the word-count rule (rule 5): language or tool
+# contracts fix their name, not the author -- __init__/__main__ are
+# Python package/entry-point hooks, conftest is pytest's, setup/wsgi/asgi
+# are the names their respective tools look for, _version is the
+# single-source-of-truth file convention most build backends expect.
+_EXEMPT_STEMS = frozenset(
+    {"__init__", "__main__", "conftest", "setup", "wsgi", "asgi", "_version"}
+)
+
+# Directory names exempt from the word-count rule: src is the src-layout
+# convention, tests/migrations/alembic hold generated or framework-named
+# files the author doesn't choose. A directory whose *parent* is named
+# `src` is also exempt (see _find_dir_name_word_violations): the src
+# layout is how a repo gets a one-word import package name without being
+# the package root itself.
+_EXEMPT_DIR_NAMES = frozenset({"src", "tests", "migrations", "alembic"})
+
+
+def _word_count(stem: str) -> int:
+    """The number of non-empty `_`-separated runs in `stem`, after
+    stripping leading underscores. `models` is 1, `_common` is 1 (leading
+    underscore stripped first), `s3_client` is 2."""
+    stripped = stem.lstrip("_")
+    return len([word for word in stripped.split("_") if word])
 
 
 def _is_public(name: str) -> bool:
@@ -49,11 +75,25 @@ class _FileTooWide:
 
 
 @dataclass(frozen=True, slots=True)
+class _FileNameTooFewWords:
+    file: Path
+    words: int
+
+
+@dataclass(frozen=True, slots=True)
+class _DirNameTooFewWords:
+    directory: Path
+    words: int
+
+
+@dataclass(frozen=True, slots=True)
 class _StructureFindings:
     too_long: tuple[_FileTooLong, ...] = ()
     too_many_entries: tuple[_DirTooManyEntries, ...] = ()
     package_too_big: tuple[_PackageTooManyFiles, ...] = ()
     too_wide: tuple[_FileTooWide, ...] = ()
+    file_name_too_few_words: tuple[_FileNameTooFewWords, ...] = ()
+    dir_name_too_few_words: tuple[_DirNameTooFewWords, ...] = ()
 
 
 def _is_direct_child(child: Path, parent: Path) -> bool:
@@ -131,6 +171,40 @@ def _find_file_width_violations(
     return tuple(out)
 
 
+def _find_file_name_word_violations(
+    py_files: Sequence[Path], repo: Path
+) -> tuple[_FileNameTooFewWords, ...]:
+    out: list[_FileNameTooFewWords] = []
+    for f in py_files:
+        stem = f.stem
+        if stem in _EXEMPT_STEMS:
+            continue
+        words = _word_count(stem)
+        if words < _MIN_NAME_WORDS:
+            out.append(_FileNameTooFewWords(f.relative_to(repo), words))
+    out.sort(key=lambda v: str(v.file))
+    return tuple(out)
+
+
+def _find_dir_name_word_violations(
+    dirs_with_py: AbstractSet[Path], package_roots: Sequence[Path]
+) -> tuple[_DirNameTooFewWords, ...]:
+    out: list[_DirNameTooFewWords] = []
+    for d in dirs_with_py:
+        if (
+            d == Path(".")
+            or d in package_roots
+            or d.name in _EXEMPT_DIR_NAMES
+            or d.parent.name == "src"
+        ):
+            continue
+        words = _word_count(d.name)
+        if words < _MIN_NAME_WORDS:
+            out.append(_DirNameTooFewWords(d, words))
+    out.sort(key=lambda v: str(v.directory))
+    return tuple(out)
+
+
 def find_structure_findings(
     repo: Path,
     py_files: Sequence[Path],
@@ -139,12 +213,25 @@ def find_structure_findings(
     registered_names: Mapping[Path, frozenset[str]],
     excludes: Sequence[str] = (),
 ) -> _StructureFindings:
+    package_roots = find_package_roots(repo, excludes)
     return _StructureFindings(
         too_long=_find_file_size_violations(repo, py_files),
         too_many_entries=_find_dir_entry_violations(dirs_with_py, py_files, repo),
         package_too_big=_find_package_size_violations(repo, py_files, excludes),
         too_wide=_find_file_width_violations(defined_names, registered_names),
+        file_name_too_few_words=_find_file_name_word_violations(py_files, repo),
+        dir_name_too_few_words=_find_dir_name_word_violations(
+            dirs_with_py, package_roots
+        ),
     )
+
+
+_SCOPE_GUIDANCE = (
+    "  one word admits everything of its kind, so a file or directory grows "
+    "with its parent. Add a word that sets a scope, which concept or which "
+    "part, not a longer kind name: `model_classes.py` or "
+    "`github_connector.py` pass the rule and miss its point."
+)
 
 
 def print_structure_findings(findings: _StructureFindings) -> bool:
@@ -153,6 +240,8 @@ def print_structure_findings(findings: _StructureFindings) -> bool:
         + len(findings.too_many_entries)
         + len(findings.package_too_big)
         + len(findings.too_wide)
+        + len(findings.file_name_too_few_words)
+        + len(findings.dir_name_too_few_words)
     )
     print(f"## Structure limits: {total} finding(s)")
     for v in findings.too_long:
@@ -165,5 +254,13 @@ def print_structure_findings(findings: _StructureFindings) -> bool:
         print(f"- {label}: {v.files} files (limit {_MAX_PACKAGE_FILES})")
     for v in findings.too_wide:
         print(f"- {v.file}: {v.names} public names (limit {_MAX_PUBLIC_NAMES})")
+    if findings.file_name_too_few_words or findings.dir_name_too_few_words:
+        print(_SCOPE_GUIDANCE)
+    for v in findings.file_name_too_few_words:
+        print(f"- {v.file}: {v.words} word(s) in the name (minimum {_MIN_NAME_WORDS})")
+    for v in findings.dir_name_too_few_words:
+        print(
+            f"- {v.directory}: {v.words} word(s) in the name (minimum {_MIN_NAME_WORDS})"
+        )
     print()
     return total > 0
