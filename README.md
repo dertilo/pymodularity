@@ -65,6 +65,8 @@ Details: [docs/rules.md](docs/rules.md#excluding-code).
   - `index.md`: written for every view.
   - `--html`: adds a clickable `index.html` per view. The browser needs network access to load mermaid from a CDN.
 - `pymodularity metrics <repo>`: prints a coupling report to stdout.
+  - `<repo>`: the tree holding every consumer of the code under study, never a library package alone.
+  - reason: a package measured alone misses its importers outside it. Reach, interface width and exposure share come out too low, and files its consumers use show as misplaced.
   - reach: transitive dependents and dependencies, plus a `score` per file and per directory.
   - interface width: the names other code imports from a unit.
   - exposure share: how much of what a file defines other code uses.
