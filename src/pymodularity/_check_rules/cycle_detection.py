@@ -8,7 +8,7 @@ from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 from pathlib import Path
 
-from pymodularity._parse.graph import EdgeKey, EdgeNames
+from pymodularity._import_parse.import_graph import EdgeKey, EdgeNames
 from pymodularity._view_edges import PairEdges, build_view, compute_inside_nodes
 
 

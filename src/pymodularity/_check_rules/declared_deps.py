@@ -22,7 +22,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import cast
 
-from pymodularity._parse.packages import find_package_roots, should_skip_dir
+from pymodularity._import_parse.package_roots import find_package_roots, should_skip_dir
 
 _DEPTRY_VERSION = "0.25.1"
 

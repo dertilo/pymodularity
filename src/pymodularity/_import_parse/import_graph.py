@@ -12,20 +12,20 @@ from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 from pathlib import Path
 
-from pymodularity._parse._resolve import (
+from pymodularity._import_parse._import_resolve import (
     ImportRoots,
     Index,
     ModuleCandidates,
     build_index,
     path_components,
 )
-from pymodularity._parse.attrs import (
+from pymodularity._import_parse.attribute_access import (
     PathParts,
     collect_attribute_accesses,
     locally_bound_names,
 )
-from pymodularity._parse.imports import resolve_import_node
-from pymodularity._parse.packages import (
+from pymodularity._import_parse.import_bindings import resolve_import_node
+from pymodularity._import_parse.package_roots import (
     find_package_roots,
     is_path_excluded,
     should_skip_dir,

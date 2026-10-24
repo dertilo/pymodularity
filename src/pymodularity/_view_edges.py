@@ -6,7 +6,7 @@ shares."""
 from collections.abc import Mapping
 from pathlib import Path
 
-from pymodularity._parse.graph import EdgeKey, EdgeNames
+from pymodularity._import_parse.import_graph import EdgeKey, EdgeNames
 
 # (view node src, view node tgt)
 PairKey = tuple[Path, Path]

@@ -42,7 +42,7 @@ def test_known_first_party_merges_pyproject_config(tmp_path: Path) -> None:
     before the command line is built. Catches an implementation that
     passes only the autodetected names and silently drops a user's own
     `known_first_party` config."""
-    from pymodularity._deps import _known_first_party_names
+    from pymodularity._check_rules.declared_deps import _known_first_party_names
 
     pyproject = tmp_path / "pyproject.toml"
     write(

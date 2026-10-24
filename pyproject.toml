@@ -14,7 +14,7 @@ Repository = "https://github.com/dertilo/pymodularity"
 Issues = "https://github.com/dertilo/pymodularity/issues"
 
 [project.scripts]
-pymodularity = "pymodularity.cli:main"
+pymodularity = "pymodularity.__main__:main"
 
 [dependency-groups]
 dev = [

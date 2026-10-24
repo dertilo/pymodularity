@@ -229,7 +229,11 @@ def test_parse_deptry_json_handles_null_line() -> None:
     """A deptry JSON finding with line/column null (deptry reports this for
     some finding kinds) must parse to the "no position" case, not crash or
     silently coerce null to 0."""
-    from pymodularity._deps import _DepsResult, _parse_deptry_json, print_deps_findings
+    from pymodularity._check_rules.declared_deps import (
+        _DepsResult,
+        _parse_deptry_json,
+        print_deps_findings,
+    )
 
     raw = """
     [

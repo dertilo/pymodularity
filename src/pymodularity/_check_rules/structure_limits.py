@@ -8,7 +8,7 @@ from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 from pathlib import Path
 
-from pymodularity._parse.packages import find_package_roots
+from pymodularity._import_parse.package_roots import find_package_roots
 
 _MAX_FILE_LINES = 500
 _MAX_DIR_ENTRIES = 10

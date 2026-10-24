@@ -5,9 +5,9 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from pymodularity._cycles import CycleFinding
-from pymodularity._parse.graph import EdgeNames
-from pymodularity._parse.names import is_private_name, module_comp
+from pymodularity._check_rules.cycle_detection import CycleFinding
+from pymodularity._import_parse.import_graph import EdgeNames
+from pymodularity._import_parse.module_names import is_private_name, module_comp
 
 
 def _owning_package_root(rel: Path, package_roots: Sequence[Path]) -> Path:

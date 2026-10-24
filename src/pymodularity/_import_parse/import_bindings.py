@@ -7,7 +7,7 @@ import ast
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from pymodularity._parse._resolve import (
+from pymodularity._import_parse._import_resolve import (
     Ambiguous,
     ImportRoots,
     ModuleCandidates,
@@ -15,7 +15,7 @@ from pymodularity._parse._resolve import (
     resolve_exact,
     resolve_relative,
 )
-from pymodularity._parse.attrs import (
+from pymodularity._import_parse.attribute_access import (
     PathParts,
     bound_module_comp,
     plain_import_anchor,

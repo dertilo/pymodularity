@@ -7,10 +7,10 @@ from collections.abc import Callable, Mapping, Sequence
 from collections.abc import Set as AbstractSet
 from pathlib import Path
 
-from pymodularity._parse.graph import EdgeKey, EdgeNames
-from pymodularity._scores import DirScore, FileScore
+from pymodularity._graph_views._node_summary import render_summary
+from pymodularity._import_parse.import_graph import EdgeKey, EdgeNames
+from pymodularity._reach_scores import DirScore, FileScore
 from pymodularity._view_edges import PairEdges, PairKey, compute_inside_nodes
-from pymodularity._views._summary import render_summary
 
 # (link text, relative link target) for the markdown "Links:" list
 _Link = tuple[str, str]

@@ -17,7 +17,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from pymodularity._parse.names import module_comp
+from pymodularity._import_parse.module_names import module_comp
 
 # dotted module path components, e.g. ("shop", "billing", "pricing")
 _PathParts = tuple[str, ...]

@@ -10,8 +10,8 @@ from collections.abc import Mapping, Sequence
 from collections.abc import Set as AbstractSet
 from pathlib import Path
 
-from pymodularity._parse._resolve import ModuleCandidates
-from pymodularity._parse.names import module_comp
+from pymodularity._import_parse._import_resolve import ModuleCandidates
+from pymodularity._import_parse.module_names import module_comp
 
 # dotted module-path components, canonical form (module_comp of a file's
 # repo-relative path), used as a key into ModuleCandidates

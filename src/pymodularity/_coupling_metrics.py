@@ -7,8 +7,8 @@ from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 from pathlib import Path
 
-from pymodularity._parse.graph import EdgeNames
-from pymodularity._scores import DirScore, FileScore, ancestor_dirs
+from pymodularity._import_parse.import_graph import EdgeNames
+from pymodularity._reach_scores import DirScore, FileScore, ancestor_dirs
 
 
 @dataclass(frozen=True, slots=True)
