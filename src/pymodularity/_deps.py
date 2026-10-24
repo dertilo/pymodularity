@@ -208,6 +208,7 @@ def _run_deptry_on(
     cmd = [
         "uv",
         "run",
+        "--isolated",
         "--directory",
         str(pkg_abs),
         "--with",
