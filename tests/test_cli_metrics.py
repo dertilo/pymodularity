@@ -1,7 +1,7 @@
 """Tests for `pymodularity metrics`: reach, interface width, file/directory
 score, exposure share, entry files, wrapper-directory skipping, and the
-misplaced-files table. Split out of test_cli.py to keep that module under
-the line-count soft cap.
+importer distance table. Split out of test_cli.py to keep that module
+under the line-count soft cap.
 
 Uses tmp_path fixtures, same style as test_cli.py -- see that module's
 docstring for the rationale.
@@ -269,48 +269,80 @@ def test_metrics_skips_wrapper_directories_in_every_directory_table(
     assert "| wrap/inner |" not in entry_section
 
 
-def test_metrics_misplaced_files_table(tmp_path: Path) -> None:
-    """`dirA/f.py` imports 3 files in `dirB` directly (`x`, `y`, `z`) and is
-    itself imported by a 4th `dirB` file, `w.py` (composition-root-like),
-    and has no partner in its own directory: own=0, other=4, imported
-    by=1 (`w`), imports=3 (`x`, `y`, `z`) -> misplaced. `dirA/h.py` is a tie
-    case: 3 own-directory partners (`g`, `i`, `j`, each importing or
-    imported by `h`) and 3 other-directory partners in `dirB` (`p`, `q`,
-    `r`) -> own=3, other=3 of 6 partners, not misplaced since other must
-    exceed half of all partners. `dirA/k.py` is the spread case: imported
-    by 3 files in each of `dirB`, `dirC`, `dirD` -> own=0, other=3 of 9,
-    not misplaced for the same reason. Every other file in the tree has at
-    most 1 partner in any single other directory (other < 3), so only
-    `f.py` is misplaced: 1 of 22 files."""
-    write(tmp_path / "pyproject.toml", '[project]\nname = "pkgx"\nversion = "0"\n')
-    write(
-        tmp_path / "dirA/f.py",
-        "import dirB.x\nimport dirB.y\nimport dirB.z\n",
-    )
-    write(
-        tmp_path / "dirA/h.py",
-        "import dirA.i\nimport dirB.p\nimport dirB.q\nimport dirB.r\n",
-    )
-    write(tmp_path / "dirA/g.py", "import dirA.h\n")
-    write(tmp_path / "dirA/i.py", "import dirA.h\n")
-    write(tmp_path / "dirA/j.py", "import dirA.h\n")
-    write(tmp_path / "dirB/x.py", "x = 1\n")
-    write(tmp_path / "dirB/y.py", "x = 1\n")
-    write(tmp_path / "dirB/z.py", "x = 1\n")
-    write(tmp_path / "dirB/w.py", "import dirA.f\n")
-    write(tmp_path / "dirB/p.py", "x = 1\n")
-    write(tmp_path / "dirB/q.py", "x = 1\n")
-    write(tmp_path / "dirB/r.py", "x = 1\n")
-    write(tmp_path / "dirA/k.py", "x = 1\n")
-    for d in ("dirB", "dirC", "dirD"):
-        for name in ("k1", "k2", "k3"):
-            write(tmp_path / f"{d}/{name}.py", "import dirA.k\n")
+def test_metrics_subdirectory_file_imported_by_parent_is_not_listed(
+    tmp_path: Path,
+) -> None:
+    """`pkg/parent.py` imports `pkg/sub/child.py`, its only importer.
+    up(parent's dir, child's dir) = 0: a parent reaching into its own
+    subdirectory is a down-step, free by definition. now = 0, so
+    `child.py` has no row at all (gain is only defined for now > 0).
+    Catches an implementation that counts a down-step like an up-step,
+    which would give child.py a positive `now` and list it."""
+    write(tmp_path / "pyproject.toml", '[project]\nname = "pkgp"\nversion = "0"\n')
+    write(tmp_path / "pkg/parent.py", "import pkg.sub.child\n")
+    write(tmp_path / "pkg/sub/child.py", "x = 1\n")
 
     result = run_metrics(tmp_path)
 
     assert result.returncode == 0
-    section = result.stdout.split("## Misplaced files")[1]
-    assert "1 of 22 files misplaced." in section
-    assert "| dirA/f.py | 0 | 4 | 1 | 3 | dirB |" in section
-    assert "| dirA/h.py |" not in section
-    assert "| dirA/k.py |" not in section
+    section = result.stdout.split("## Importer distance")[1]
+    assert "child.py" not in section
+
+
+def test_metrics_helpers_file_used_only_by_sibling_routes_is_listed(
+    tmp_path: Path,
+) -> None:
+    """`pkg/helpers/h.py` has 2 importers, both in the sibling directory
+    `pkg/routes`, none in `pkg/helpers` itself. now = 2 (1 up-step each,
+    siblings under `pkg`); the best directory within the file's own
+    distribution is `pkg/routes` itself, cost 0 -> gain = 2, rel = 100%.
+    Catches an implementation that only looks at ancestor directories of
+    the file's own directory as candidates, missing a sibling subtree."""
+    write(tmp_path / "pyproject.toml", '[project]\nname = "pkgh"\nversion = "0"\n')
+    write(tmp_path / "pkg/helpers/h.py", "x = 1\n")
+    write(tmp_path / "pkg/routes/r1.py", "import pkg.helpers.h\n")
+    write(tmp_path / "pkg/routes/r2.py", "import pkg.helpers.h\n")
+
+    result = run_metrics(tmp_path)
+
+    assert result.returncode == 0
+    section = result.stdout.split("## Importer distance")[1]
+    assert (
+        "| pkg/helpers/h.py | 2 | 2 | pkg/routes | 0 | 2 | 100% | pkg/routes:2 |"
+        in section
+    )
+
+
+def test_metrics_best_dir_never_crosses_into_another_distribution(
+    tmp_path: Path,
+) -> None:
+    """`libs/target.py` (part of the repo-root distribution, no closer
+    pyproject.toml) has 3 importers in `pkg_b/users` (a separate
+    distribution, its own pyproject.toml) and 1 in `libs/local` (same
+    distribution as the file). `pkg_b/users` is the biggest importer
+    group, but candidates are restricted to the file's own distribution,
+    so best dir must stay inside the root distribution (`libs/local`)
+    even though moving into `pkg_b/users` would cost less. By hand:
+    now = 3*up(pkg_b/users, libs) + 1*up(libs/local, libs) = 3*2 + 1*1 = 7;
+    cost(libs/local) = 3*up(pkg_b/users, libs/local) + 0 = 3*2 = 6, the
+    best candidate inside the root distribution -> gain=1, rel=14%.
+    Catches an implementation that picks the directory with the lowest
+    absolute cost repo-wide, ignoring the distribution boundary."""
+    write(tmp_path / "pyproject.toml", '[project]\nname = "root"\nversion = "0"\n')
+    write(tmp_path / "pkg_b/pyproject.toml", '[project]\nname = "pkgb"\nversion = "0"\n')
+    write(tmp_path / "libs/target.py", "x = 1\n")
+    write(tmp_path / "libs/local/l1.py", "import libs.target\n")
+    write(tmp_path / "pkg_b/users/u1.py", "import libs.target\n")
+    write(tmp_path / "pkg_b/users/u2.py", "import libs.target\n")
+    write(tmp_path / "pkg_b/users/u3.py", "import libs.target\n")
+
+    result = run_metrics(tmp_path)
+
+    assert result.returncode == 0
+    section = result.stdout.split("## Importer distance")[1]
+    assert (
+        "| libs/target.py | 4 | 7 | libs/local | 6 | 1 | 14% | "
+        + "pkg_b/users:3, libs/local:1 |"
+        in section
+    )
+    assert "| libs/target.py | 4 | 7 | pkg_b" not in section

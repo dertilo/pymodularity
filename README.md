@@ -66,12 +66,12 @@ Details: [docs/rules.md](docs/rules.md#excluding-code).
   - `--html`: adds a clickable `index.html` per view. The browser needs network access to load mermaid from a CDN.
 - `pymodularity metrics <repo>`: prints a coupling report to stdout.
   - `<repo>`: the tree holding every consumer of the code under study, never a library package alone.
-  - reason: a package measured alone misses its importers outside it. Reach, interface width and exposure share come out too low, and files its consumers use show as misplaced.
+  - reason: a package measured alone misses its importers outside it. Reach, interface width and exposure share come out too low, and importer distance (below) ignores the importers outside the package.
   - reach: transitive dependents and dependencies, plus a `score` per file and per directory.
   - interface width: the names other code imports from a unit.
   - exposure share: how much of what a file defines other code uses.
   - entry files: how much of a directory outside code reaches into.
-  - misplaced files: files whose importers sit mostly in another directory.
+  - importer distance: how many directory levels a file's importers climb to reach it today versus the best directory in its own distribution. See [docs/metrics.md](docs/metrics.md) for how to read the section.
   - exit code: always 0, because the report is no gate.
 
 ## Blind spots

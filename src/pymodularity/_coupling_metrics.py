@@ -1,13 +1,15 @@
 """The 4 coupling analyses beyond reach/scores (interface width, exposure
-share, entry files, misplaced files), and `render_metrics`, the printer
+share, entry files, importer distance), and `render_metrics`, the printer
 for all 5 of `pymodularity metrics`'s sections."""
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 from pathlib import Path
 
+from pymodularity._entry_files import compute_entry_files
 from pymodularity._import_parse.import_graph import EdgeNames
+from pymodularity._importer_distance import compute_importer_distance
 from pymodularity._reach_scores import DirScore, FileScore, ancestor_dirs
 
 
@@ -171,93 +173,6 @@ def _compute_exposure(
     return exposures
 
 
-@dataclass(frozen=True, slots=True)
-class _EntryFiles:
-    """A directory's entry-file share: how many of its files at least one
-    file outside the directory imports directly, out of all files inside
-    it; outside_importers is the distinct outside files doing so."""
-
-    directory: Path
-    entry: int
-    files: int
-    share: float
-    outside_importers: int
-
-
-def _compute_entry_files(
-    dirs_with_py: AbstractSet[Path], nodes: AbstractSet[Path], edge_names: EdgeNames
-) -> Mapping[Path, _EntryFiles]:
-    entry_by_dir: dict[Path, set[Path]] = {}
-    outside_importers_by_dir: dict[Path, set[Path]] = {}
-    for importer_rel, target_rel in edge_names:
-        for directory in ancestor_dirs(target_rel):
-            if directory not in dirs_with_py:
-                continue
-            if importer_rel.is_relative_to(directory):
-                continue
-            entry_by_dir.setdefault(directory, set()).add(target_rel)
-            outside_importers_by_dir.setdefault(directory, set()).add(importer_rel)
-
-    files_by_dir: dict[Path, int] = {}
-    for f in nodes:
-        for directory in ancestor_dirs(f):
-            if directory in dirs_with_py:
-                files_by_dir[directory] = files_by_dir.get(directory, 0) + 1
-
-    out: dict[Path, _EntryFiles] = {}
-    for directory in dirs_with_py:
-        files = files_by_dir.get(directory, 0)
-        entry = len(entry_by_dir.get(directory, set()))
-        share = entry / files if files else 0.0
-        outside = len(outside_importers_by_dir.get(directory, set()))
-        out[directory] = _EntryFiles(directory, entry, files, share, outside)
-    return out
-
-
-@dataclass(frozen=True, slots=True)
-class _Misplaced:
-    """A file whose direct importers (from the same file graph the scores
-    use) cluster more heavily in some other directory than in its own."""
-
-    path: Path
-    own: int
-    other: int
-    other_dir: Path
-    imports: int
-
-
-def _compute_misplaced(
-    nodes: AbstractSet[Path],
-    adj: Mapping[Path, AbstractSet[Path]],
-    radj: Mapping[Path, AbstractSet[Path]],
-) -> tuple[_Misplaced, ...]:
-    results: list[_Misplaced] = []
-    for f in nodes:
-        importers = radj.get(f, set()) - {f}
-        imports_of = adj.get(f, set()) - {f}
-        partners = importers
-        own_dir = f.parent
-        own = 0
-        other_counts: dict[Path, int] = {}
-        for p in partners:
-            d = p.parent
-            if d == own_dir:
-                own += 1
-            else:
-                other_counts[d] = other_counts.get(d, 0) + 1
-        other = 0
-        other_dir = Path(".")
-        if other_counts:
-            best = max(other_counts.values())
-            # tie-break deterministically: smallest path among the ties
-            other_dir = min(d for d, c in other_counts.items() if c == best)
-            other = best
-        if other >= 3 and 2 * other > len(partners):
-            imports = sum(1 for p in imports_of if p.parent == other_dir)
-            results.append(_Misplaced(f, own, other, other_dir, imports))
-    return tuple(results)
-
-
 def render_metrics(
     dirs_with_py: AbstractSet[Path],
     edge_names: EdgeNames,
@@ -266,6 +181,7 @@ def render_metrics(
     defined_names: Mapping[Path, AbstractSet[str]],
     adj: Mapping[Path, AbstractSet[Path]],
     radj: Mapping[Path, AbstractSet[Path]],
+    package_roots: Sequence[Path],
 ) -> tuple[str, ...]:
     nodes = set(adj)
     n = len(nodes)
@@ -406,7 +322,7 @@ def render_metrics(
     lines.append("")
     entries = [
         e
-        for e in _compute_entry_files(dirs_with_py, nodes, edge_names).values()
+        for e in compute_entry_files(dirs_with_py, nodes, edge_names).values()
         if e.files >= 5 and e.directory not in wrapper_dirs
     ]
     entries.sort(key=lambda e: (-e.share, -e.outside_importers, str(e.directory)))
@@ -420,31 +336,38 @@ def render_metrics(
         )
     lines.append("")
 
-    lines.append("## Misplaced files")
-    lines.append("")
-    misplaced = sorted(
-        _compute_misplaced(nodes, adj, radj),
-        key=lambda m: (-(m.other - m.own), str(m.path)),
-    )
-    lines.append(f"{len(misplaced)} of {n} files misplaced.")
+    lines.append("## Importer distance")
     lines.append("")
     lines.append(
-        "partners(f) = files importing f directly; own = partners in f's "
-        + "own parent directory; other = the largest count among all "
-        + "other parent directories (a subdirectory of f's own directory "
-        + "counts as other), naming that directory; misplaced when "
-        + "other >= 3 and other exceeds half of all partners. "
-        + "'imports' = those other-directory files that f itself imports, "
-        + "marking a mutual dependency. Sorted by other - own desc, then "
-        + "path."
+        "Per file with >= 1 importer: up-steps(importer, f) = levels the "
+        + "importer's directory climbs to reach f's directory (down-steps "
+        + "are free). now = up-steps summed over f's importers today; "
+        + "best dir = the directory in f's own distribution (nearest "
+        + "ancestor with a pyproject.toml, repo root otherwise) with the "
+        + "lowest such sum, ties keeping f's current directory; "
+        + "gain = now - best, rel = gain / now. A listed file is a "
+        + "question for the developer, not a finding -- see docs/metrics.md "
+        + "for how to read it."
     )
     lines.append("")
-    lines.append("| file | own | other | imports | other directory |")
-    lines.append("| --- | --- | --- | --- | --- |")
-    for m in misplaced:
-        other_dir_label = "repo root" if m.other_dir == Path(".") else str(m.other_dir)
+    distances = sorted(
+        compute_importer_distance(nodes, radj, package_roots),
+        key=lambda d: (-d.gain, -d.rel, str(d.path)),
+    )
+    shown = distances[:25]
+    lines.append(
+        "| file | importers | now | best dir | there | gain | rel | top importer dirs |"
+    )
+    lines.append("| --- | --- | --- | --- | --- | --- | --- | --- |")
+    for d in shown:
+        best_dir_label = "repo root" if d.best_dir == Path(".") else str(d.best_dir)
+        top = ", ".join(
+            f"{('repo root' if cp.path == Path('.') else str(cp.path))}:{cp.count}"
+            for cp in d.top_importer_dirs
+        )
         lines.append(
-            f"| {m.path} | {m.own} | {m.other} | {m.imports} | {other_dir_label} |"
+            f"| {d.path} | {d.importers} | {d.now} | {best_dir_label} | "
+            + f"{d.best} | {d.gain} | {d.rel * 100:.0f}% | {top} |"
         )
     lines.append("")
 
