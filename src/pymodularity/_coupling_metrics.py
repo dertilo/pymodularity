@@ -1,6 +1,7 @@
-"""The 4 coupling analyses beyond reach/scores (interface width, exposure
-share, entry files, importer distance), and `render_metrics`, the printer
-for all 5 of `pymodularity metrics`'s sections."""
+"""The 3 coupling analyses beyond reach/scores (interface width, exposure
+share, entry files), and `render_metrics`, the printer for all 5 of
+`pymodularity metrics`'s sections, including name groups from
+`_name_groups`."""
 
 from collections.abc import Mapping, Sequence
 from collections.abc import Set as AbstractSet
@@ -9,7 +10,7 @@ from pathlib import Path
 
 from pymodularity._entry_files import compute_entry_files
 from pymodularity._import_parse.import_graph import EdgeNames
-from pymodularity._importer_distance import compute_importer_distance
+from pymodularity._name_groups import compute_name_groups
 from pymodularity._reach_scores import DirScore, FileScore, ancestor_dirs
 
 
@@ -174,14 +175,15 @@ def _compute_exposure(
 
 
 def render_metrics(
+    repo: Path,
+    py_files: Sequence[Path],
     dirs_with_py: AbstractSet[Path],
     edge_names: EdgeNames,
+    attr_name_edges: EdgeNames,
     file_scores: Mapping[Path, FileScore],
     dir_scores: Mapping[Path, DirScore],
     defined_names: Mapping[Path, AbstractSet[str]],
     adj: Mapping[Path, AbstractSet[Path]],
-    radj: Mapping[Path, AbstractSet[Path]],
-    package_roots: Sequence[Path],
 ) -> tuple[str, ...]:
     nodes = set(adj)
     n = len(nodes)
@@ -336,39 +338,27 @@ def render_metrics(
         )
     lines.append("")
 
-    lines.append("## Importer distance")
+    lines.append("## Name groups")
     lines.append("")
     lines.append(
-        "Per file with >= 1 importer: up-steps(importer, f) = levels the "
-        + "importer's directory climbs to reach f's directory (down-steps "
-        + "are free). now = up-steps summed over f's importers today; "
-        + "best dir = the directory in f's own distribution (nearest "
-        + "ancestor with a pyproject.toml, repo root otherwise) with the "
-        + "lowest such sum, ties keeping f's current directory; "
-        + "gain = now - best, rel = gain / now. A listed file is a "
-        + "question for the developer, not a finding -- see docs/metrics.md "
-        + "for how to read it."
+        "Per file (`__init__.py` excluded): its top-level names, joined "
+        + "when one importer imports them together or one name's body "
+        + "references the other, with a re-export fix -- an import "
+        + "reached through a package `__init__.py` counts against the "
+        + "file that defines the name, not the `__init__.py` itself. A "
+        + "group counts only if it has >= 1 importer and >= 1 "
+        + "def/async def/class name. A file is listed when it has >= 2 "
+        + "counting groups. See docs/metrics.md for the join rules and "
+        + "how to read a finding."
     )
     lines.append("")
-    distances = sorted(
-        compute_importer_distance(nodes, radj, package_roots),
-        key=lambda d: (-d.gain, -d.rel, str(d.path)),
-    )
-    shown = distances[:25]
-    lines.append(
-        "| file | importers | now | best dir | there | gain | rel | top importer dirs |"
-    )
-    lines.append("| --- | --- | --- | --- | --- | --- | --- | --- |")
-    for d in shown:
-        best_dir_label = "repo root" if d.best_dir == Path(".") else str(d.best_dir)
-        top = ", ".join(
-            f"{('repo root' if cp.path == Path('.') else str(cp.path))}:{cp.count}"
-            for cp in d.top_importer_dirs
-        )
-        lines.append(
-            f"| {d.path} | {d.importers} | {d.now} | {best_dir_label} | "
-            + f"{d.best} | {d.gain} | {d.rel * 100:.0f}% | {top} |"
-        )
+    for fg in compute_name_groups(
+        repo, py_files, defined_names, edge_names, attr_name_edges
+    ):
+        lines.append(f"- {fg.path}")
+        for g in fg.groups:
+            lines.append(f"  - names: {', '.join(g.names)}")
+            lines.append(f"    importers: {', '.join(str(p) for p in g.importers)}")
     lines.append("")
 
     return tuple(lines)

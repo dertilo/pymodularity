@@ -1,31 +1,75 @@
-# Reading the importer distance section
+# Reading the name groups section
 
-Scope: how to read `pymodularity metrics`'s importer distance section. Not a gate, not a verdict: each listed file is a question for the developer, with the case behind it below.
+Scope: how to read `pymodularity metrics`'s name groups section. Not a gate, not a verdict: a listed file is a split candidate for the developer to judge.
 
-- Does the file hide a decision from its importers?
-  - case: a storage, schema or driver choice lives in one file. Its importers depend on the file without changing when that choice changes, so the file earns its own module.
-  - read: its own module says nothing about its directory. A decision that only best dir's code relies on can live inside best dir.
-  - example: maistack-research's `services/file_service.py` hides the storage backend from `routes/`. The gain is high, and the file may still rightly stay.
-- Are the importers composition root code?
-  - case: a module that wires other modules together imports many directories by design. Being wired up from one directory says nothing about where the wired file belongs.
-  - test: open the importer. A function that constructs objects and passes them along is a composition root. A function that uses the imported file's behavior is not.
-- Is the rel percentage low with a high gain?
-  - case: rel 20% to 30% with a high gain count means many directories use the file: a hub, not a misfit in one directory.
-  - read: the file's best dir is the biggest consumer among many, not a natural home.
-- Do the outside importers belong to a second feature?
-  - case: the gain sums up-steps, so 2 importers from another feature lower it little. A move into best dir makes that feature reach into another feature's directory.
-  - example: maistack-research's `shared/connector_continuation.py` has 10 importers in `unified_ingestion/resources/connectors/` and 2 in `web_ingestion/`.
-  - read: open the importers outside best dir first.
-- Does best dir sit below the file?
-  - case: a subdirectory importing a module from its parent directory pays up-steps, so best dir points down into that subdirectory.
-  - example: `graph_office_adapter/core.py` has 6 of 7 importers in its subdirectory `profiles/`, the plugins it serves.
-  - read: a base module that a subdirectory's files build on belongs above them, and the subdirectory's own code belongs inside it.
-- Does the gain rest on 1 to 2 edges?
-  - case: a gain of 1 or 2 comes from a single importer or two. One new caller in a third directory changes the picture.
-  - read: thin evidence, treat as a prompt to look, not as a measured cost.
-- Is the best dir only a hint?
-  - case: best dir is the candidate with the smallest sum of up-steps. Down-steps cost 0, so best dir tends to sit deep.
-  - read: best dir names a direction, not a verified destination. The developer still picks the actual target.
-- Can the metric miss a shared decision?
-  - case: two files sharing a database table, a schema or a file format belong together even with no import edge between them.
-  - read: importer distance sees only import edges. A 0-gain file can still belong elsewhere by this other criterion, and importer distance says nothing about it.
+Covered below: the join rules, the constant filter, the re-export rule, how to read a finding, and the known blind spots.
+
+## What it measures
+
+Per file, `__init__.py` excluded: the file's top-level names, clustered into groups.
+
+reason for the exclusion: a package's `__init__.py` is a re-export surface, not a unit of its own.
+
+A group is a split candidate when it holds names no other group shares an importer or an internal reference with.
+
+reason: the groups inside one file then behave like 2 or more unrelated files glued together.
+
+## Join rules
+
+Two top-level names join into the same group when:
+
+- one importer imports both of them together, whether by `from file import A, B`, by 2 separate import statements in the same importing file, or by attribute access (`import pkg; pkg.a(); pkg.b()`), or
+- one name's body (its def/class body, decorators, bases, defaults, annotations, or an assignment's right-hand side) references the other by name.
+
+Joining is transitive (union-find): if A joins B and B joins C, all 3 land in one group.
+
+## The constant filter
+
+A group counts only if it has >= 1 importer and holds at least one `def`, `async def` or `class` name. A group made only of constants, config values or other plain assignments is dropped before counting.
+
+reason: a constant references nothing, so every constant forms a group of its own, and that floods the output with groups that carry no def or class.
+
+A file is listed when it has >= 2 counting groups.
+
+## The re-export rule
+
+An import of a name `N` reached through a package's `__init__.py` is attributed to the file that actually defines `N`, followed through the chain to that file, not to the `__init__.py` itself.
+
+reason: without this, a package that re-exports its public names from `__init__.py` makes every real importer look like it imports the `__init__.py` instead of the defining file, so the join never happens.
+
+Example: a package `pkg` re-exports `Subject` from `pkg/acl.py` in its `pkg/__init__.py`. A caller imports `Subject` via `pkg` and `acl_sql` directly from `pkg.acl`.
+
+Without the fix, the import of `Subject` counts against `pkg/__init__.py`, never against `pkg/acl.py`. `pkg/acl.py`'s 2 groups never join, so `pkg/acl.py` shows up as a false positive.
+
+## How to read a finding
+
+A listed file holds 2 or more groups with no caller and no body in common.
+
+A finding is a hit when a code change exists that improves the code and removes the finding. 3 such changes exist:
+
+- **Split.** The groups are separate units. One group's names move to another module, the file itself stays.
+  - reason: no caller uses names from both groups, so the move splits no caller's imports.
+- **Name the shared decision.** The groups share a decision that lives only in strings, comments or call order.
+  - kinds: one database table, one global state, the phases of one protocol.
+  - repair: one constant, function or type that both groups reference names the decision and joins the groups.
+  - example: 2 functions that repeat the same SQL predicate text join once both use one named predicate.
+- **Delete.** A group is speculative code, such as a no-op hook for a feature that does not exist yet. Deleting the group and its calls removes the finding.
+
+A finding is a false positive when only a worse change removes it, such as an artificial reference between the groups.
+
+A listed bucket module (`models.py`, `errors.py`, a module of constants) is a finding, not a false positive.
+
+reason: a bucket module that bundles unrelated names is the smell this metric looks for.
+
+## Known blind spots
+
+- **Names that only share an imported name do not join.** A type or a module-level object such as `settings`, imported by many unrelated functions, does not by itself join their names.
+  - design decision: an earlier prototype joined names on any shared imported name, including a type and `settings`.
+  - That join merged splits that held in practice.
+- **Test files are not importers.** Tests are excluded from the whole graph `pymodularity` builds.
+  - A group whose only importer is a test file, or that has no importer at all, is dropped before reporting.
+  - A name used only by tests never shows up as a group.
+- **A star re-export (`from .m import *`) loses the importer.** The re-export rule follows a name by name, so a wildcard import leaves no name to follow, and the names it would have joined show up separately.
+- **An aliased re-export (`from .m import a as alpha`) loses the importer.** The outside caller imports `alpha`, a name `m.py` never defines, so the import never resolves back to `a`.
+- **A name an `__init__.py` both defines and re-exports loses the importer.** `try: from .m import a / except ImportError: def a(): ...` makes `__init__.py` itself the definer the resolver stops at, so the real name in `m.py` never gets the import.
+- **A re-export through a non-`__init__` facade module loses the importer.** `pkg/facade.py: from pkg.m import a` re-exports `a` exactly like an `__init__.py` would, but the re-export rule only follows `__init__.py` files, so the facade's own importers never count against `m.py`.

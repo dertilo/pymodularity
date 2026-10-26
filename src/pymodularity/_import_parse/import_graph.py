@@ -77,46 +77,72 @@ def _assign_target_names(target: ast.expr) -> tuple[str, ...]:
     return ()
 
 
-def _names_from_stmt(stmt: ast.stmt) -> tuple[str, ...]:
-    """Names one statement defines: def/async def/class, plain or annotated
-    assignment (including tuple-unpacking), `type X = ...`, or the same
-    recursively inside an `if`/`try` block's branches (body, elif/else,
-    except handlers, finally). Imports never count."""
+@dataclass(frozen=True, slots=True)
+class NameBinding:
+    """One name a block of statements defines: for a def/class, `node` is
+    the statement itself (decorators, bases, defaults, annotations, body
+    all live under it) and `is_def_like` is true; for an assignment,
+    `node` is the right-hand side only, not the target, and `is_def_like`
+    is false."""
+
+    name: str
+    node: ast.AST
+    is_def_like: bool
+
+
+def _name_bindings_from_stmt(stmt: ast.stmt) -> tuple[NameBinding, ...]:
+    """Bindings one statement makes: def/async def/class, plain or
+    annotated assignment (including tuple-unpacking), `type X = ...`, or
+    the same recursively inside an `if`/`try`/`try*` block's branches
+    (body, elif/else, except handlers, finally). Imports never count."""
     if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-        return (stmt.name,)
+        return (NameBinding(stmt.name, stmt, True),)
     if isinstance(stmt, ast.Assign):
-        names: list[str] = []
-        for target in stmt.targets:
-            names.extend(_assign_target_names(target))
-        return tuple(names)
+        return tuple(
+            NameBinding(name, stmt.value, False)
+            for target in stmt.targets
+            for name in _assign_target_names(target)
+        )
     if isinstance(stmt, ast.AnnAssign):
-        return _assign_target_names(stmt.target)
+        value = stmt.value if stmt.value is not None else stmt.annotation
+        return tuple(
+            NameBinding(name, value, False) for name in _assign_target_names(stmt.target)
+        )
     if type(stmt).__name__ == "TypeAlias":
         # `type X = ...` (py3.12+); accessed by name, not ast.TypeAlias,
         # since this project's declared pythonVersion (3.11) doesn't know
         # that attribute, and ast.parse itself only ever yields this node
         # when running under a 3.12+ interpreter.
         name_node: object = getattr(stmt, "name", None)
-        return (name_node.id,) if isinstance(name_node, ast.Name) else ()
+        value_node: object = getattr(stmt, "value", None)
+        if isinstance(name_node, ast.Name) and isinstance(value_node, ast.AST):
+            return (NameBinding(name_node.id, value_node, False),)
+        return ()
     if isinstance(stmt, ast.If):
-        return tuple(n for s in (*stmt.body, *stmt.orelse) for n in _names_from_stmt(s))
-    if isinstance(stmt, ast.Try):
+        branches = (*stmt.body, *stmt.orelse)
+        return tuple(b for s in branches for b in _name_bindings_from_stmt(s))
+    if isinstance(stmt, (ast.Try, ast.TryStar)):
         branches = (*stmt.body, *stmt.orelse, *stmt.finalbody)
-        names = [n for s in branches for n in _names_from_stmt(s)]
+        bindings = [b for s in branches for b in _name_bindings_from_stmt(s)]
         for handler in stmt.handlers:
-            names.extend(n for s in handler.body for n in _names_from_stmt(s))
-        return tuple(names)
+            bindings.extend(b for s in handler.body for b in _name_bindings_from_stmt(s))
+        return tuple(bindings)
     return ()
+
+
+def name_bindings(body: Sequence[ast.stmt]) -> tuple[NameBinding, ...]:
+    """One `NameBinding` per name one block of statements defines, used
+    both to compute `defined_names` and, in `_name_groups`, to find the
+    node whose body to walk for each name's internal references."""
+    return tuple(b for stmt in body for b in _name_bindings_from_stmt(stmt))
 
 
 def _top_level_defined_names(tree: ast.Module) -> frozenset[str]:
     """Names this module defines at top level: def, async def, class, plain
     or annotated assignment (including tuple-unpacking), `type X = ...`, and
-    the same nested in a top-level `if`/`try` block. Imports don't count."""
-    defined: set[str] = set()
-    for stmt in tree.body:
-        defined.update(_names_from_stmt(stmt))
-    return frozenset(defined)
+    the same nested in a top-level `if`/`try`/`try*` block. Imports don't
+    count."""
+    return frozenset(b.name for b in name_bindings(tree.body))
 
 
 def _registered_names_from_stmt(stmt: ast.stmt) -> tuple[str, ...]:

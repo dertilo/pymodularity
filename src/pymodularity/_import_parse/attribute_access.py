@@ -122,17 +122,19 @@ def collect_attribute_accesses(
     return tuple(module_hops), tuple(name_accesses)
 
 
-def locally_bound_names(tree: ast.Module) -> frozenset[str]:
-    """Every name this file binds locally anywhere in its body: an `ast.arg`
+def locally_bound_names(tree: ast.AST) -> frozenset[str]:
+    """Every name bound locally anywhere under `tree`: an `ast.arg`
     of any kind (positional, keyword-only, `*args`, `**kwargs`, lambda
     included), an `ast.Name` in Store context (plain assignment, tuple
     unpacking, `for`/`with`/`except`/comprehension targets -- all of these
     are `ast.Name` nodes with Store context), and `def`/`class` names
     (not `ast.Name` nodes, so listed separately). `global`/`nonlocal`
     declarations don't themselves bind a name, so they're not needed.
-    Conservative on purpose: a name the file rebinds anywhere is dropped
-    from `binding` for the whole file, not just after the rebinding point,
-    so a false finding becomes a missed one -- the right trade for a gate."""
+    Conservative on purpose: a name rebound anywhere under `tree` is
+    dropped for the whole of `tree`, not just after the rebinding point,
+    so a false finding becomes a missed one -- the right trade for a gate.
+    `tree` is usually a whole module, but any node works: `_name_groups`
+    calls this per def/class to find its own parameters and targets."""
     names: set[str] = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.arg):
