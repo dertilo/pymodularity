@@ -41,6 +41,7 @@ Each finding names the importing file, the target and the owner.
 - **Structure limits:** at most 500 lines per file, 10 entries per directory, 100 files per package root and 10 public names per file.
   - no config, no baseline.
   - ceiling: a limit marks the size that is clearly too much. It is no target.
+  - symptom: a finding names where to look, never what to do. Moving files until the count passes treats the symptom. The response is a change at symbol level, one dependency at a time: [docs/rules.md](docs/rules.md#a-finding-is-a-symptom-not-a-target).
   - below a limit: a smaller interface is still better. `metrics` reports interface width and exposure share.
 - **Names carry a scope:** a scanned file's stem, and a directory holding scanned code, need at least 2 `_`-separated words. The finding asks for a thought, not a second word: what must sit together here. Split, move, merge or rename follows from the answer.
   - exempt: `__init__`, `__main__`, `conftest`, `setup`, `wsgi`, `asgi`, `_version`, a package root, `src`, `tests`, `migrations`, `alembic`.

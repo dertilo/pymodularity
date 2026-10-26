@@ -1,7 +1,11 @@
 """The structure-limit rules (file size, directory fan-out, package size,
 public top-level-name count per file, and a file/directory name carrying
 at least 2 words) `pymodularity check` enforces. All limits are fixed
-constants, no config, no baseline. Imported only by `cli`."""
+constants, no config, no baseline. Imported only by `check_command`.
+
+A finding is a symptom, never a target: it names where to look, not what
+to do. Moving files until a count passes only shifts the cause, see
+docs/rules.md."""
 
 from collections.abc import Mapping, Sequence
 from collections.abc import Set as AbstractSet
@@ -237,6 +241,14 @@ _SCOPE_GUIDANCE = (
 )
 
 
+_SYMPTOM_GUIDANCE = (
+    "  a finding names where to look, not what to do. Moving files until the "
+    "count passes only shifts the cause. Read which names cause the imports "
+    "there, and remove or invert one dependency at a time. An open finding "
+    "is acceptable."
+)
+
+
 def print_structure_findings(findings: _StructureFindings) -> bool:
     total = (
         len(findings.too_long)
@@ -247,6 +259,8 @@ def print_structure_findings(findings: _StructureFindings) -> bool:
         + len(findings.dir_name_too_few_words)
     )
     print(f"## Structure limits: {total} finding(s)")
+    if total > 0:
+        print(_SYMPTOM_GUIDANCE)
     for v in findings.too_long:
         print(f"- {v.file}: {v.lines} lines (limit {_MAX_FILE_LINES})")
     for v in findings.too_many_entries:

@@ -42,6 +42,7 @@
 - catalog/catalog/privacy/receipts/other.py -> catalog/catalog/privacy/receipts/invoice.py: name _fmt private to file catalog/catalog/privacy/receipts/invoice.py
 
 ## Structure limits: 3 finding(s)
+  a finding names where to look, not what to do. Moving files until the count passes only shifts the cause. Read which names cause the imports there, and remove or invert one dependency at a time. An open finding is acceptable.
 - catalog/catalog/structure/big_file.py: 501 lines (limit 500)
 - catalog/catalog/structure/wide_dir: 11 entries (limit 10)
 - catalog/catalog/structure/wide_names.py: 11 public names (limit 10)

@@ -48,7 +48,8 @@ physical lines per file, 10 entries per directory (`__init__.py`/
 top-level names per file, and a public top-level name that no scanned
 file imports (a file no scanned file imports at all, `__init__.py` and
 `__main__.py`, and a name reachable through a whole-module import, are all
-exempt). (6) names carry a scope: a scanned file's stem, and a directory
+exempt); a structure finding is a symptom, never a target: moving files
+until the count passes is no fix, see docs/rules.md. (6) names carry a scope: a scanned file's stem, and a directory
 holding scanned code, must have at least 2 `_`-separated words (after
 stripping leading underscores), fixed, no config. Exempt files:
 `__init__`, `__main__`, `conftest`, `setup`, `wsgi`, `asgi`, `_version`
@@ -105,6 +106,12 @@ def add_check_parser(subparsers: argparse._SubParsersAction, exclude_help: str) 
             "run the import-cycle, privacy convention and dependency "
             + "declaration checks, print findings to stdout, exit 1 on "
             + "any finding"
+        ),
+        description=(
+            "A structure-limit finding is a symptom, never a target: it names "
+            + "where to look, not what to do. Moving files until the count "
+            + "passes is no fix. Change dependencies at symbol level, one at "
+            + "a time. An open finding is acceptable."
         ),
     )
     check_parser.add_argument("repo", type=Path)
