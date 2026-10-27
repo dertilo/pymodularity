@@ -348,7 +348,7 @@ def render_metrics(
         + "file that defines the name, not the `__init__.py` itself. A "
         + "group counts only if it has >= 1 importer and >= 1 "
         + "def/async def/class name. A file is listed when it has >= 2 "
-        + "counting groups. See docs/metrics.md for the join rules and "
+        + "counting groups. See docs/name_groups.md for the join rules and "
         + "how to read a finding."
     )
     lines.append("")

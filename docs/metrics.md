@@ -1,75 +1,109 @@
-# Reading the name groups section
+# Reading the metrics report
 
-Scope: how to read `pymodularity metrics`'s name groups section. Not a gate, not a verdict: a listed file is a split candidate for the developer to judge.
+Scope: how to read the 5 sections `pymodularity metrics` prints. Not a gate: a high row is a question for the developer, never a verdict.
 
-Covered below: the join rules, the constant filter, the re-export rule, how to read a finding, and the known blind spots.
+Name groups has its own guide: [name_groups.md](name_groups.md).
 
-## What it measures
+## What all 5 metrics share
 
-Per file, `__init__.py` excluded: the file's top-level names, clustered into groups.
+- input: the import graph `pymodularity check` builds, tests excluded.
+- coupling seen: through Python imports only. Coupling through tables, config keys, HTTP or strings stays invisible, see "Blind spots" in the [README](../README.md).
+- `<repo>`: the tree holding every consumer of the code under study.
+  - reason: an importer outside `<repo>` is missing from every count. The 4 coupling metrics come out too low, and name groups splits groups that only an outside importer would join.
+- a name counts as 1, whatever it carries. A base class with default methods is 1 name, though its importers depend on its behaviour.
+- a directory with no Python file of its own and a single child directory repeats that child's numbers. Only the deepest directory of such a chain gets a row.
 
-reason for the exclusion: a package's `__init__.py` is a re-export surface, not a unit of its own.
+## How the 5 metrics relate
 
-A group is a split candidate when it holds names no other group shares an importer or an internal reference with.
+| metric | question | counts | boundary |
+|---|---|---|---|
+| reach | how far does a change spread? | files, transitive | file, directory |
+| interface width | how big is the surface a change must keep stable? | names, direct | file, directory |
+| exposure share | how much of a file stays hidden? | names used / names defined | file |
+| entry files | how many doors does a directory have? | files reached / files | directory |
+| name groups | which of a file's names belong together? | groups of names | file |
 
-reason: the groups inside one file then behave like 2 or more unrelated files glued together.
+The first 4 measure coupling. Name groups measures cohesion.
 
-## Join rules
+- **Reach and interface width:** reach counts the files a change can reach. Width counts the names a change must keep stable, direct importers only.
+  - example: a file exposing 1 name to 1 importer has width 1. Its reach is large when that importer is a base module.
+- **Interface width and exposure share:** width is the size of a file's surface. Share is that size divided by everything the file defines.
+  - wide and shallow: the costly case, a large surface with little hidden behind it.
+  - wide and deep: a large surface in front of a larger hidden inside.
+  - why both: width alone can't tell deep from shallow. Share alone ranks a 3-of-3 file next to a 42-of-42 file.
+- **Exposure share and entry files:** both ask what crosses a boundary. They differ in boundary and in unit.
+  - exposure share: names, at the file boundary. A sibling in the same directory counts as an importer.
+  - entry files: files, at the directory boundary. A sibling never counts.
+  - consequence: a package can show 1 entry file while every file inside it has a high exposure share. Siblings using each other's names is normal inside a package.
+- **Directory width and entry files:** both measure the directory boundary. Width counts the names that cross it, entry files counts the files they come from.
+  - few entry files, wide: a front door with a large surface.
+  - many entry files, narrow: no front door, but little crosses.
+- **Exposure share and name groups:** both read which importer uses which name. Share counts the used names, name groups clusters them by who uses them together.
+  - shared result: a bucket module of unrelated exceptions or types tops the share table and is listed by name groups.
 
-Two top-level names join into the same group when:
+## Reach
 
-- one importer imports both of them together, whether by `from file import A, B`, by 2 separate import statements in the same importing file, or by attribute access (`import pkg; pkg.a(); pkg.b()`), or
-- one name's body (its def/class body, decorators, bases, defaults, annotations, or an assignment's right-hand side) references the other by name.
+- per file:
+  - dependents: the files that import it, directly or transitively.
+  - dependencies: the files it imports, directly or transitively.
+  - score: dependents times dependencies, the pairs of files linked through this file.
+- per directory: in counts the outside files reaching into it, out the outside files it reaches. Score is in times out.
 
-Joining is transitive (union-find): if A joins B and B joins C, all 3 land in one group.
+Reading a row:
 
-## The constant filter
+- high score: a file in the middle that passes change in both directions.
+- high dependents: a base. A change to it is expensive.
+- high dependencies: a fragile file. A change in any file below it can break it.
 
-A group counts only if it has >= 1 importer and holds at least one `def`, `async def` or `class` name. A group made only of constants, config values or other plain assignments is dropped before counting.
+False readings:
 
-reason: a constant references nothing, so every constant forms a group of its own, and that floods the output with groups that carry no def or class.
+- a base file that imports nothing scores 0. Its risk shows in the dependents list.
+- an entry point tops the dependencies list, because importing everything is its job.
+- files in one import cycle share identical counts.
 
-A file is listed when it has >= 2 counting groups.
+## Interface width
 
-## The re-export rule
+- per file: the distinct names other files import from it, plus the number of importing files.
+  - a nameless import (`import x`) counts the target as 1 name.
+  - a sibling and a re-exporting `__init__.py` count as importers.
+- per directory: the distinct names files outside the directory import from inside it, plus the number of those outside files.
 
-An import of a name `N` reached through a package's `__init__.py` is attributed to the file that actually defines `N`, followed through the chain to that file, not to the `__init__.py` itself.
+Reading a row: each name is a promise a change must keep. The importer count says how many files break when a promise breaks.
 
-reason: without this, a package that re-exports its public names from `__init__.py` makes every real importer look like it imports the `__init__.py` instead of the defining file, so the join never happens.
+False reading: a shared library has a wide interface, because sharing is its job.
 
-Example: a package `pkg` re-exports `Subject` from `pkg/acl.py` in its `pkg/__init__.py`. A caller imports `Subject` via `pkg` and `acl_sql` directly from `pkg.acl`.
+## Exposure share
 
-Without the fix, the import of `Subject` counts against `pkg/__init__.py`, never against `pkg/acl.py`. `pkg/acl.py`'s 2 groups never join, so `pkg/acl.py` shows up as a false positive.
+- per file, `__init__.py` excluded:
+  - defined: its top-level names, imports excluded.
+  - used: the defined names at least one other file imports, a sibling included.
+  - share: used divided by defined.
+- covered: files defining at least 10 names.
+- relation to width: used equals the file's interface width. exception: width also counts nameless imports and names the file imports and passes on.
 
-## How to read a finding
+Reading a row: a high share marks a shallow file that hides little.
 
-A listed file holds 2 or more groups with no caller and no body in common.
+False readings:
 
-A finding is a hit when a code change exists that improves the code and removes the finding. 3 such changes exist:
+- the metric counts names, never what a name carries. So it can't tell a file with internals to hide from a file without any.
+- a file of exceptions or plain types tops the table because it exposes every name it defines. Its defect is low cohesion, not missing hiding. Name groups lists it when its importers use disjoint subsets of its names.
+- a file of only constants tops the table too. Name groups never lists it, because a group needs a `def` or `class`.
 
-- **Split.** The groups are separate units. One group's names move to another module, the file itself stays.
-  - reason: no caller uses names from both groups, so the move splits no caller's imports.
-- **Name the shared decision.** The groups share a decision that lives only in strings, comments or call order.
-  - kinds: one database table, one global state, the phases of one protocol.
-  - repair: one constant, function or type that both groups reference names the decision and joins the groups.
-  - example: 2 functions that repeat the same SQL predicate text join once both use one named predicate.
-- **Delete.** A group is speculative code, such as a no-op hook for a feature that does not exist yet. Deleting the group and its calls removes the finding.
+## Entry files
 
-A finding is a false positive when only a worse change removes it, such as an artificial reference between the groups.
+- per directory with at least 5 files:
+  - entry files: the files inside it that at least 1 file outside it imports directly.
+  - share: entry files divided by files.
+  - outside importers: the distinct outside files importing anything inside.
+- a file counts toward every directory above it.
+- a package that outside code reaches only through its `__init__.py` shows 1 entry file.
 
-A listed bucket module (`models.py`, `errors.py`, a module of constants) is a finding, not a false positive.
+Reading a row: a high share marks a directory without a front door. Outside code reaches into many of its files.
 
-reason: a bucket module that bundles unrelated names is the smell this metric looks for.
+False reading: many entry files with few outside importers usually marks a registry collecting all files, not a missing front door.
 
-## Known blind spots
+## Name groups
 
-- **Names that only share an imported name do not join.** A type or a module-level object such as `settings`, imported by many unrelated functions, does not by itself join their names.
-  - design decision: an earlier prototype joined names on any shared imported name, including a type and `settings`.
-  - That join merged splits that held in practice.
-- **Test files are not importers.** Tests are excluded from the whole graph `pymodularity` builds.
-  - A group whose only importer is a test file, or that has no importer at all, is dropped before reporting.
-  - A name used only by tests never shows up as a group.
-- **A star re-export (`from .m import *`) loses the importer.** The re-export rule follows a name by name, so a wildcard import leaves no name to follow, and the names it would have joined show up separately.
-- **An aliased re-export (`from .m import a as alpha`) loses the importer.** The outside caller imports `alpha`, a name `m.py` never defines, so the import never resolves back to `a`.
-- **A name an `__init__.py` both defines and re-exports loses the importer.** `try: from .m import a / except ImportError: def a(): ...` makes `__init__.py` itself the definer the resolver stops at, so the real name in `m.py` never gets the import.
-- **A re-export through a non-`__init__` facade module loses the importer.** `pkg/facade.py: from pkg.m import a` re-exports `a` exactly like an `__init__.py` would, but the re-export rule only follows `__init__.py` files, so the facade's own importers never count against `m.py`.
+Per file, its top-level names grouped by shared importers and internal references. A file with 2 or more groups is listed.
+
+Join rules, re-exports, how to read a finding and blind spots: [name_groups.md](name_groups.md).
