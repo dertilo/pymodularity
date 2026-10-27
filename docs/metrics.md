@@ -38,6 +38,7 @@ The first 4 measure coupling. Name groups measures cohesion.
 - **Directory width and entry files:** both measure the directory boundary. Width counts the names that cross it, entry files counts the files they come from.
   - few entry files, wide: a front door with a large surface.
   - many entry files, narrow: no front door, but little crosses.
+  - many entry files, wide: no front door and a large surface, the costly case.
 - **Exposure share and name groups:** both read which importer uses which name. Share counts the used names, name groups clusters them by who uses them together.
   - shared result: a bucket module of unrelated exceptions or types tops the share table and is listed by name groups.
 
@@ -54,12 +55,12 @@ Reading a row:
 - high score: a file in the middle that passes change in both directions.
 - high dependents: a base. A change to it is expensive.
 - high dependencies: a fragile file. A change in any file below it can break it.
+- a block of rows with identical dependents and dependencies: the files of 1 import cycle. A change to any of them reaches the same files, so read the block as 1 unit.
 
 False readings:
 
 - a base file that imports nothing scores 0. Its risk shows in the dependents list.
 - an entry point tops the dependencies list, because importing everything is its job.
-- files in one import cycle share identical counts.
 
 ## Interface width
 
@@ -78,6 +79,7 @@ False reading: a shared library has a wide interface, because sharing is its job
   - defined: its top-level names, imports excluded.
   - used: the defined names at least one other file imports, a sibling included.
   - share: used divided by defined.
+  - importing files: the distinct files importing at least 1 of its names.
 - covered: files defining at least 10 names.
 - relation to width: used equals the file's interface width. exception: width also counts nameless imports and names the file imports and passes on.
 
@@ -88,6 +90,7 @@ False readings:
 - the metric counts names, never what a name carries. So it can't tell a file with internals to hide from a file without any.
 - a file of exceptions or plain types tops the table because it exposes every name it defines. Its defect is low cohesion, not missing hiding. Name groups lists it when its importers use disjoint subsets of its names.
 - a file of only constants tops the table too. Name groups never lists it, because a group needs a `def` or `class`.
+- a high share with 1 importing file marks a file split off its only importer, not a shallow module. Read the file and its importer as 1 unit.
 
 ## Entry files
 
