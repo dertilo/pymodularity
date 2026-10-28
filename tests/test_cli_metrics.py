@@ -1,5 +1,5 @@
 """Tests for `pymodularity metrics`: reach, interface width, file/directory
-score, exposure share, entry files, and wrapper-directory skipping. The
+reach-score, exposure share, entry files, and wrapper-directory skipping. The
 "## Name groups" section has its own tests in
 test_cli_metrics_name_groups.py. Split out of test_cli.py to keep that
 module under the line-count soft cap.
@@ -63,12 +63,12 @@ def test_metrics_interface_width_excludes_internal_importers(tmp_path: Path) -> 
     assert "a/sub: 1 names, 1 importers" in result.stdout
 
 
-def _score_fixture(tmp_path: Path) -> None:
+def _reach_score_fixture(tmp_path: Path) -> None:
     """`outer.py -> pkg/a.py -> pkg/sub/b.py`, and `pkg/other.py -> outer.py`
     closes a path back in, so `pkg` and `pkg/sub` are each reached from
     outside through only one of their inner files (`a.py`/`b.py`), never
     through their `__init__.py`."""
-    write(tmp_path / "pyproject.toml", '[project]\nname = "score"\nversion = "0"\n')
+    write(tmp_path / "pyproject.toml", '[project]\nname = "reach-score"\nversion = "0"\n')
     write(tmp_path / "outer.py", "import pkg.a\n")
     write(tmp_path / "pkg/__init__.py", "")
     write(tmp_path / "pkg/a.py", "import pkg.sub.b\n")
@@ -77,15 +77,17 @@ def _score_fixture(tmp_path: Path) -> None:
     write(tmp_path / "pkg/other.py", "import outer\n")
 
 
-def test_metrics_file_score_is_dependents_times_dependencies(tmp_path: Path) -> None:
+def test_metrics_file_reach_score_is_dependents_times_dependencies(
+    tmp_path: Path,
+) -> None:
     """By hand on the fixture above: dependents are outer=1 (other),
     a=2 (outer, other), b=3 (a, outer, other), pkg/__init__=0,
     pkg/sub/__init__=0, other=0; dependencies are outer=2 (a, b), a=1 (b),
     b=0, pkg/__init__=0, pkg/sub/__init__=0, other=3 (outer, a, b). So
-    scores are outer=2, a=2, b=0, other=0, both __init__.py=0. Catches an
-    implementation that adds instead of multiplies the two counts, or one
-    that scores a file using another file's counts."""
-    _score_fixture(tmp_path)
+    reach-scores are outer=2, a=2, b=0, other=0, both __init__.py=0.
+    Catches an implementation that adds instead of multiplies the two
+    counts, or one that scores a file using another file's counts."""
+    _reach_score_fixture(tmp_path)
 
     result = run_metrics(tmp_path)
 
@@ -98,22 +100,25 @@ def test_metrics_file_score_is_dependents_times_dependencies(tmp_path: Path) -> 
     assert "| pkg/sub/__init__.py | 0 | 0 | 0 |" in result.stdout
 
 
-def test_metrics_dir_score_reached_only_through_inner_file(tmp_path: Path) -> None:
+def test_metrics_dir_reach_score_reached_only_through_inner_file(
+    tmp_path: Path,
+) -> None:
     """On the same fixture: everything that can reach into `pkg` or be
     reached out of it, from outside `pkg`, funnels through `pkg/a.py`
     (dependents {outer.py, pkg/other.py}, both still inside pkg itself so
     they don't count as "outside") and `pkg/other.py` (dependencies
     {outer.py, pkg/a.py, pkg/sub/b.py}, with the pkg-internal ones
     filtered out). After filtering, only `outer.py` is external on either
-    side: in = {outer.py} = 1, out = {outer.py} = 1, score = 1. `pkg/sub`
-    is reached from outside through `pkg/sub/b.py` alone, and that reach
-    set must include `pkg/a.py` itself (a sibling of `sub`, outside `sub`
-    but inside `pkg`): in = {a.py, outer.py, other.py} = 3; `sub` reaches
-    nothing outside itself, out = 0, score = 0. Catches an implementation
+    side: in = {outer.py} = 1, out = {outer.py} = 1, reach-score = 1.
+    `pkg/sub` is reached from outside through `pkg/sub/b.py` alone, and
+    that reach set must include `pkg/a.py` itself (a sibling of `sub`,
+    outside `sub` but inside `pkg`): in = {a.py, outer.py, other.py} = 3;
+    `sub` reaches nothing outside itself, out = 0, reach-score = 0.
+    Catches an implementation
     that filters by the top-level directory instead of the specific
     directory being measured, or one that only follows a directory's
     `__init__.py` instead of every file inside it."""
-    _score_fixture(tmp_path)
+    _reach_score_fixture(tmp_path)
 
     result = run_metrics(tmp_path)
 
@@ -124,19 +129,20 @@ def test_metrics_dir_score_reached_only_through_inner_file(tmp_path: Path) -> No
 
 def test_view_children_table_carries_new_columns(tmp_path: Path) -> None:
     """The per-view children table must show the same
-    dependents/dependencies/score for a file child, and in/out/score for
-    a directory child, as the repo-wide `metrics` tables -- computed once
+    dependents/dependencies/reach-score for a file child, and
+    in/out/reach-score for a directory child, as the repo-wide `metrics`
+    tables -- computed once
     and looked up, not recomputed from the view's own (possibly partial)
     edges. Catches an implementation that only wires the new columns into
     `metrics`'s own tables and forgets the view output."""
-    _score_fixture(tmp_path)
+    _reach_score_fixture(tmp_path)
     out_dir = tmp_path / "out"
 
     result = run_graph(tmp_path, out_dir)
     assert result.returncode == 0
 
     root_view = (out_dir / "index.md").read_text()
-    assert "dependents/in | dependencies/out | score" in root_view
+    assert "dependents/in | dependencies/out | reach-score" in root_view
     assert "| pkg | 1 | 0 | 1 | 1 | 0/1 | 0 | 1 | 1 | 1 |" in root_view
 
     pkg_view = (out_dir / "pkg" / "index.md").read_text()
@@ -226,13 +232,13 @@ def test_metrics_skips_wrapper_directories_in_every_directory_table(
     `wrap/inner`, which itself holds no .py file of its own and has
     exactly one child, `wrap/inner/deep`, which holds all 5 real files.
     `wrap` and `wrap/inner` each have the same file set as `deep` and must
-    be skipped in the directory score table, the directory width list, and
-    the entry-files table, leaving only `wrap/inner/deep`. By hand:
-    `outsider.py` directly imports `deep/a.py` and `deep/b.py` (bare
-    imports, no names) -> entry=2, files=5, share=40.0%, outside
+    be skipped in the directory reach-score table, the directory width
+    list, and the entry-files table, leaving only `wrap/inner/deep`. By
+    hand: `outsider.py` directly imports `deep/a.py` and `deep/b.py`
+    (bare imports, no names) -> entry=2, files=5, share=40.0%, outside
     importers=1; dependents(a)=dependents(b)=1 (outsider), c/d/e=0, so
     in={outsider}=1, out=0 (none of deep's files import anything),
-    score=0; width names=2 (a, b each count as 1 bare-import name),
+    reach-score=0; width names=2 (a, b each count as 1 bare-import name),
     importers=1. Catches an implementation that only de-duplicates one of
     the three tables, or that collapses a wrapper even when it holds a
     .py file of its own or has more than one child."""
@@ -250,7 +256,7 @@ def test_metrics_skips_wrapper_directories_in_every_directory_table(
     result = run_metrics(tmp_path)
 
     assert result.returncode == 0
-    dir_score_section = result.stdout.split("All directories by score")[1].split(
+    dir_score_section = result.stdout.split("All directories by reach-score")[1].split(
         "## Interface width"
     )[0]
     assert "| wrap/inner/deep | 1 | 0 | 0 |" in dir_score_section

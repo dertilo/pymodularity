@@ -69,7 +69,7 @@ Details: [docs/rules.md](docs/rules.md#excluding-code).
   - reading guide: [docs/metrics.md](docs/metrics.md), how the 5 metrics relate and how to read each one.
   - `<repo>`: the tree holding every consumer of the code under study, never a library package alone.
   - reason: measuring a package alone hides its outside importers. Reach, interface width and exposure share come out too low. Groups that only an outside importer would join show up as separate in name groups (below), which gives false positives.
-  - reach: transitive dependents and dependencies, plus a `score` per file and per directory.
+  - reach: transitive dependents and dependencies, plus a `reach-score` per file and per directory.
   - interface width: the names other code imports from a unit.
   - exposure share: how much of what a file defines other code uses.
   - entry files: how much of a directory outside code reaches into.

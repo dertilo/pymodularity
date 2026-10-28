@@ -45,25 +45,26 @@ def _compute_reach(
 
 @dataclass(frozen=True, slots=True)
 class FileScore:
-    """A file's score: dependents x dependencies, both transitive."""
+    """A file's reach-score: dependents x dependencies, both transitive."""
 
     path: Path
     dependents: int
     dependencies: int
-    score: int
+    reach_score: int
 
 
 @dataclass(frozen=True, slots=True)
 class DirScore:
-    """A directory's score, measured across its own boundary, repo-wide:
-    `reach_in` is how many files outside the directory reach some file
-    inside it (transitively); `reach_out` is how many files outside it
-    are reached by some file inside it (transitively); score = in x out."""
+    """A directory's reach-score, measured across its own boundary,
+    repo-wide: `reach_in` is how many files outside the directory reach
+    some file inside it (transitively); `reach_out` is how many files
+    outside it are reached by some file inside it (transitively);
+    reach-score = in x out."""
 
     path: Path
     reach_in: int
     reach_out: int
-    score: int
+    reach_score: int
 
 
 def _compute_file_scores(

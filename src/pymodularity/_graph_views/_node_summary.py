@@ -1,6 +1,6 @@
 """A directory view's node summary table: one row per inside child, with
-its score columns (via `_scores`) and the Cycles section (via `_cycles`),
-rendered as the markdown block `render.write_view` embeds."""
+its reach-score columns (via `_scores`) and the Cycles section (via
+`_cycles`), rendered as the markdown block `render.write_view` embeds."""
 
 from collections.abc import Callable, Mapping
 from collections.abc import Set as AbstractSet
@@ -50,7 +50,7 @@ class _NodeRow:
     private: int
     reach_a: int
     reach_b: int
-    score: int
+    reach_score: int
 
 
 def _compute_node_rows(
@@ -106,10 +106,10 @@ def _compute_node_rows(
 
         if node in dirs_with_py:
             ds = dir_scores[node]
-            reach_a, reach_b, score = ds.reach_in, ds.reach_out, ds.score
+            reach_a, reach_b, reach_score = ds.reach_in, ds.reach_out, ds.reach_score
         else:
             fs = file_scores[node]
-            reach_a, reach_b, score = fs.dependents, fs.dependencies, fs.score
+            reach_a, reach_b, reach_score = fs.dependents, fs.dependencies, fs.reach_score
 
         rows.append(
             _NodeRow(
@@ -123,7 +123,7 @@ def _compute_node_rows(
                 private,
                 reach_a,
                 reach_b,
-                score,
+                reach_score,
             )
         )
 
@@ -199,7 +199,7 @@ def render_summary(
     )
     lines.append(
         "| node | importing units | names | internal | outgoing | root/internals "
-        + "| private | dependents/in | dependencies/out | score |"
+        + "| private | dependents/in | dependencies/out | reach-score |"
     )
     lines.append("| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |")
     for row in rows:
@@ -214,7 +214,7 @@ def render_summary(
         )
         left = f"| {label(row.node)} | {row.importing_units} | {names_cell} |"
         right = f" {row.internal} | {row.outgoing} | {root_cell} | {row.private} |"
-        reach_cell = f" {row.reach_a} | {row.reach_b} | {row.score} |"
+        reach_cell = f" {row.reach_a} | {row.reach_b} | {row.reach_score} |"
         lines.append(left + right + reach_cell)
     lines.append("")
     lines.append(
@@ -242,11 +242,11 @@ def render_summary(
         + 'name starts with a single "_" (not dunder)'
     )
     lines.append(
-        "- dependents/in, dependencies/out, score: computed once repo-wide "
-        + "(not from this view's edges); for a file node, transitive "
-        + "dependents and dependencies and their product; for a directory "
-        + "node, files outside it that reach in/are reached out of it "
-        + "transitively, and their product"
+        "- dependents/in, dependencies/out, reach-score: computed once "
+        + "repo-wide (not from this view's edges); for a file node, "
+        + "transitive dependents and dependencies and their product; for a "
+        + "directory node, files outside it that reach in/are reached out "
+        + "of it transitively, and their product"
     )
     lines.append("")
     return tuple(lines)

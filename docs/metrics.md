@@ -47,19 +47,19 @@ The first 4 measure coupling. Name groups measures cohesion.
 - per file:
   - dependents: the files that import it, directly or transitively.
   - dependencies: the files it imports, directly or transitively.
-  - score: dependents times dependencies, the pairs of files linked through this file.
-- per directory: in counts the outside files reaching into it, out the outside files it reaches. Score is in times out.
+  - reach-score: dependents times dependencies, the pairs of files linked through this file.
+- per directory: in counts the outside files reaching into it, out the outside files it reaches. Reach-score is in times out.
 
 Reading a row:
 
-- high score: a file in the middle that passes change in both directions.
+- high reach-score: a file in the middle that passes change in both directions.
 - high dependents: a base. A change to it is expensive.
 - high dependencies: a fragile file. A change in any file below it can break it.
 - a block of rows with identical dependents and dependencies: the files of 1 import cycle. A change to any of them reaches the same files, so read the block as 1 unit.
 
 False readings:
 
-- a base file that imports nothing scores 0. Its risk shows in the dependents list.
+- a base file that imports nothing has a reach-score of 0. Its risk shows in the dependents list.
 - an entry point tops the dependencies list, because importing everything is its job.
 
 ## Interface width

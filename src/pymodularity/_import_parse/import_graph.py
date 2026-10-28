@@ -343,8 +343,8 @@ def build_graph(repo: Path, excludes: Sequence[str] = ()) -> _RepoGraph:
     trees out of the walk entirely, so excluded code is invisible here and
     downstream in every section built from this graph. Prints
     ambiguous-import warnings to stderr along the way. Reach and
-    file/directory scores are not computed here -- `check` never uses
-    them, so `graph` and `metrics` compute them in their own run_*
+    file/directory reach-scores are not computed here -- `check` never
+    uses them, so `graph` and `metrics` compute them in their own run_*
     path."""
     py_files = _find_py_files(repo, excludes)
     package_roots = find_package_roots(repo, excludes)

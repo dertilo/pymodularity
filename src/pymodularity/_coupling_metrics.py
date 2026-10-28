@@ -197,7 +197,7 @@ def render_metrics(
     lines.append(
         "dependents(f): other files with an import path to f, direct or "
         + "transitive; dependencies(f): other files f has an import path "
-        + "to; score(f) = dependents(f) x dependencies(f)."
+        + "to; reach-score(f) = dependents(f) x dependencies(f)."
     )
     lines.append("")
     lines.append(f"- N (non-test .py files): {n}")
@@ -219,34 +219,37 @@ def render_metrics(
     lines.append("")
 
     lines.append(
-        "All files by score (dependents x dependencies), ties: dependents "
+        "All files by reach-score (dependents x dependencies), ties: dependents "
         + "desc, then path:"
     )
     lines.append("")
-    lines.append("| file | dependents | dependencies | score |")
+    lines.append("| file | dependents | dependencies | reach-score |")
     lines.append("| --- | --- | --- | --- |")
     for fs in sorted(
-        file_scores.values(), key=lambda s: (-s.score, -s.dependents, str(s.path))
+        file_scores.values(),
+        key=lambda s: (-s.reach_score, -s.dependents, str(s.path)),
     ):
-        lines.append(f"| {fs.path} | {fs.dependents} | {fs.dependencies} | {fs.score} |")
+        lines.append(
+            f"| {fs.path} | {fs.dependents} | {fs.dependencies} | {fs.reach_score} |"
+        )
     lines.append("")
 
     lines.append(
-        "All directories by score (in x out, measured across the "
+        "All directories by reach-score (in x out, measured across the "
         + "directory's own boundary, repo-wide); a directory whose file "
         + "set is identical to its one child directory's is skipped, "
         + "keeping only the deepest directory of such a wrapper chain:"
     )
     lines.append("")
-    lines.append("| directory | in | out | score |")
+    lines.append("| directory | in | out | reach-score |")
     lines.append("| --- | --- | --- | --- |")
     for ds in sorted(
         (s for s in dir_scores.values() if s.path not in wrapper_dirs),
-        key=lambda s: (-s.score, str(s.path)),
+        key=lambda s: (-s.reach_score, str(s.path)),
     ):
         directory_label = "repo root" if ds.path == Path(".") else str(ds.path)
         lines.append(
-            f"| {directory_label} | {ds.reach_in} | {ds.reach_out} | {ds.score} |"
+            f"| {directory_label} | {ds.reach_in} | {ds.reach_out} | {ds.reach_score} |"
         )
     lines.append("")
 

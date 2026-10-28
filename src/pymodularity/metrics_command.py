@@ -1,5 +1,5 @@
 """`pymodularity metrics <repo>` prints a coupling report to stdout on the
-same file graph (reach and score per file and per directory, interface
+same file graph (reach and reach-score per file and per directory, interface
 width per file and per directory, exposure share, entry files, name
 groups) and always exits 0: it is a report, never a gate.
 
@@ -26,7 +26,7 @@ def add_metrics_parser(subparsers: argparse._SubParsersAction, exclude_help: str
     metrics_parser = subparsers.add_parser(
         "metrics",
         help=(
-            "print a coupling report (reach and score, interface "
+            "print a coupling report (reach and reach-score, interface "
             + "width, exposure share, entry files, name groups) to "
             + "stdout; always exits 0"
         ),
