@@ -1,6 +1,6 @@
 [project]
 name = "pymodularity"
-version = "0.3.1"
+version = "0.4.0"
 description = "See and check a repo's real Python imports: a privacy convention on PEP 8 underscores, an import-cycle ban, and a coupling report, all derived from the code."
 readme = "README.md"
 license = "MIT"
