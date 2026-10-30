@@ -1,5 +1,5 @@
 """pymodularity: see and check a repo's real Python imports."""
 
-from pymodularity.__main__ import __version__
+from importlib.metadata import version
 
-__all__ = ["__version__"]
+__version__ = version("pymodularity")

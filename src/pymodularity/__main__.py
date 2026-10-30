@@ -28,9 +28,9 @@ replacing it."""
 
 import argparse
 from collections.abc import Sequence
-from importlib.metadata import version
 from pathlib import Path
 
+from pymodularity import __version__
 from pymodularity._import_parse.package_roots import load_exclude_config
 from pymodularity.check_command import CheckArgs, add_check_parser, run_check
 from pymodularity.graph_command import GraphArgs, add_graph_parser, run_graph
@@ -39,8 +39,6 @@ from pymodularity.metrics_command import (
     add_metrics_parser,
     run_metrics,
 )
-
-__version__ = version("pymodularity")
 
 _EXCLUDE_HELP = (
     "fnmatch pattern (repeatable), against the POSIX path relative to "
