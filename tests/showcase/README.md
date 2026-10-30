@@ -16,7 +16,7 @@ its first line (or inline on the triggering statement).
 - **M, private modules:** a `_`-prefixed module or directory imported from outside its owner.
 - **N, private names:** a `_`-prefixed name imported from outside its owner.
 - **A, attribute access:** a private module or name reached as `mod._x` instead of imported.
-- **S, structure:** a file over the line limit, a directory over the entry limit, or a module over the public-name limit.
+- **S, structure:** a file over the line limit, a directory over the entry limit, a module over the public-name limit, or a file or directory name under 2 words.
 - **G, gaps:** the documented blind spots, plus 2 import-resolution edge cases (G5, G6).
 
 ## Diagrams
@@ -84,6 +84,7 @@ Import cycles (C1-C5):
 | S1 | `catalog/catalog/structure/big_file.py` | finding | 501 physical lines, 1 over the 500-line limit. |
 | S2 | `catalog/catalog/structure/wide_dir/` (finding, 11 entries), `.../wide_dir_ok/` (allowed, 10 entries + `__init__.py` + `__main__.py`) | both | the fan-out limit is 10; the structural files don't count as entries. |
 | S3 | `catalog/catalog/structure/wide_names.py` (finding, 11 public names), `.../wide_names_ok.py` (allowed, 11 names but 1 decorator-registered) | both | the public-name limit is 10; a decorated top-level function doesn't count. |
+| S4 | every 1-word file stem and directory name: 28 files, 25 directories (finding, 1 per name); 2-word names such as `stock_link.py`, `sibling_dir/` (allowed); package roots, `__init__.py`, `gaps/tests/` (exempt) | both | the showcase keeps its 1-word names on purpose, so rule 5 fires across all 3 roots. A flat-layout import package such as `catalog/catalog/` is a finding too, per [docs/rules.md](../../docs/rules.md). No `# S4` comment, because a name triggers it, not a line. |
 | G1 | `catalog/catalog/gaps/{box,g1_instance_attr}.py` | missed | `obj._y` on an instance needs type information this tool doesn't have. |
 | G2 | `catalog/catalog/gaps/g2_dynamic_access.py` | missed | `getattr(mod, "_x")` and `importlib.import_module("...")` bypass the static import graph entirely. |
 | G3 | `catalog/catalog/gaps/g3_shadowing.py` | missed | a parameter named `mod` anywhere in the file drops the import's binding, so a real module-level `mod._x` is missed. |
