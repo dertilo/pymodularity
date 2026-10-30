@@ -1,16 +1,16 @@
 """The 3 coupling analyses beyond reach/scores (interface width, exposure
 share, entry files), and `render_metrics`, the printer for all 5 of
 `pymodularity metrics`'s sections, including name groups from
-`_name_groups`."""
+`name_groups`."""
 
 from collections.abc import Mapping, Sequence
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 from pathlib import Path
 
-from pymodularity._entry_files import compute_entry_files
+from pymodularity._coupling_metrics.entry_files import compute_entry_files
+from pymodularity._coupling_metrics.name_groups import compute_name_groups
 from pymodularity._import_parse.import_graph import EdgeNames
-from pymodularity._name_groups import compute_name_groups
 from pymodularity._reach_scores import DirScore, FileScore, ancestor_dirs
 
 

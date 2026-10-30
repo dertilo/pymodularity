@@ -132,7 +132,7 @@ def _name_bindings_from_stmt(stmt: ast.stmt) -> tuple[NameBinding, ...]:
 
 def name_bindings(body: Sequence[ast.stmt]) -> tuple[NameBinding, ...]:
     """One `NameBinding` per name one block of statements defines, used
-    both to compute `defined_names` and, in `_name_groups`, to find the
+    both to compute `defined_names` and, in `_coupling_metrics.name_groups`, to find the
     node whose body to walk for each name's internal references."""
     return tuple(b for stmt in body for b in _name_bindings_from_stmt(stmt))
 

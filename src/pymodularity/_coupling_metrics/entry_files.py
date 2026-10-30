@@ -1,5 +1,5 @@
 """Entry files: how much of a directory outside code reaches into
-directly. Split out of `_coupling_metrics` to keep that module under
+directly. Split out of `metrics_report` to keep that module under
 the line-count soft cap."""
 
 from collections.abc import Mapping

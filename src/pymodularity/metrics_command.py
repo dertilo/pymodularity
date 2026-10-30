@@ -12,7 +12,7 @@ import argparse
 from collections.abc import Sequence
 from pathlib import Path
 
-from pymodularity._coupling_metrics import render_metrics
+from pymodularity._coupling_metrics.metrics_report import render_metrics
 from pymodularity._import_parse.import_graph import build_graph
 from pymodularity._reach_scores import compute_scores
 

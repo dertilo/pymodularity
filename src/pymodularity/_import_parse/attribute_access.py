@@ -133,7 +133,7 @@ def locally_bound_names(tree: ast.AST) -> frozenset[str]:
     Conservative on purpose: a name rebound anywhere under `tree` is
     dropped for the whole of `tree`, not just after the rebinding point,
     so a false finding becomes a missed one -- the right trade for a gate.
-    `tree` is usually a whole module, but any node works: `_name_groups`
+    `tree` is usually a whole module, but any node works: `name_groups`
     calls this per def/class to find its own parameters and targets."""
     names: set[str] = set()
     for node in ast.walk(tree):
