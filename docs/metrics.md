@@ -61,6 +61,8 @@ False readings:
 
 - a base file that imports nothing has a reach-score of 0. Its risk shows in the dependents list.
 - an entry point tops the dependencies list, because importing everything is its job.
+- a pair as linked only through this file: another import path can link the same pair, so cutting this file need not separate them.
+- a cycle file's reach-score as an exact pair count: the other cycle files sit in both lists, so the product also counts each of them paired with itself.
 
 ## Interface width
 
