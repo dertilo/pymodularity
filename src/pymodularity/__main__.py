@@ -31,6 +31,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from pymodularity import __version__
+from pymodularity._check_rules.finding_records import print_uncaught_exception
 from pymodularity._import_parse.package_roots import load_exclude_config
 from pymodularity.check_command import CheckArgs, add_check_parser, run_check
 from pymodularity.graph_command import GraphArgs, add_graph_parser, run_graph
@@ -80,7 +81,23 @@ def main() -> int:
         check_args.repo = args.repo.resolve()
         check_args.deps = args.deps
         check_args.exclude = _merged_excludes(check_args.repo, args.exclude or [])
-        return run_check(check_args.repo, check_args.deps, check_args.exclude)
+        check_args.output_format = args.output_format
+        if check_args.output_format == "json":
+            try:
+                return run_check(
+                    check_args.repo,
+                    check_args.deps,
+                    check_args.exclude,
+                    check_args.output_format,
+                )
+            except Exception:  # noqa: BLE001 -- boundary: json mode's contract
+                # is stdout stays empty and exit is 2 on any uncaught
+                # exception anywhere in `run_check`, traceback to stderr
+                print_uncaught_exception()
+                return 2
+        return run_check(
+            check_args.repo, check_args.deps, check_args.exclude, check_args.output_format
+        )
     if args.command == "graph":
         graph_args = GraphArgs()
         graph_args.repo = args.repo.resolve()

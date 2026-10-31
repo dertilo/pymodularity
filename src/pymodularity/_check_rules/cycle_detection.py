@@ -8,8 +8,11 @@ from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 from pathlib import Path
 
+from pymodularity._check_rules.finding_records import Finding, make_finding
 from pymodularity._import_parse.import_graph import EdgeKey, EdgeNames
 from pymodularity._view_edges import PairEdges, build_view, compute_inside_nodes
+
+_CYCLE_URL = "README.md#the-rules-check-enforces"
 
 
 @dataclass(frozen=True, slots=True)
@@ -242,3 +245,19 @@ def find_all_cycle_findings(
         inside_nodes = compute_inside_nodes(directory, pair_edges)
         findings.extend(_find_cycle_findings(directory, inside_nodes, pair_edges))
     return tuple(findings)
+
+
+def cycle_findings_to_records(
+    cycle_findings: Sequence[CycleFinding],
+) -> tuple[Finding, ...]:
+    """One `import-cycle` finding per directory view, same granularity as
+    text mode's `- <directory>: N nodes` line. The message names the
+    concrete example loop (the same one text mode prints after
+    `example:`), compact and specific -- the full member list carries no
+    more information than the loop already does and can be much longer."""
+    out: list[Finding] = []
+    for cf in cycle_findings:
+        loop = " -> ".join(str(n) for n in cf.example)
+        message = f"cycle of {len(cf.members)} node(s): {loop}"
+        out.append(make_finding("import-cycle", cf.directory, message, _CYCLE_URL))
+    return tuple(out)

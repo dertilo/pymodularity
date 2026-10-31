@@ -71,21 +71,29 @@ from pathlib import Path
 
 from pymodularity._check_rules.cycle_detection import (
     count_file_level_cycles,
+    cycle_findings_to_records,
     find_all_cycle_findings,
 )
 from pymodularity._check_rules.declared_deps import (
     UvMissing,
+    dep_failures_to_records,
+    dep_findings_to_records,
     print_deps_findings,
+    print_skipped_to_stderr,
     run_dependency_checks,
 )
+from pymodularity._check_rules.finding_records import Finding, print_findings_json
 from pymodularity._check_rules.privacy_findings import (
     find_name_violations,
     find_privacy_violations,
+    name_violations_to_records,
     print_check_findings,
+    privacy_violations_to_records,
 )
 from pymodularity._check_rules.structure_limits import (
     find_structure_findings,
     print_structure_findings,
+    structure_findings_to_records,
 )
 from pymodularity._import_parse.import_graph import build_graph
 from pymodularity._import_parse.package_roots import find_package_roots
@@ -97,6 +105,7 @@ class CheckArgs(argparse.Namespace):
     repo: Path = Path()
     deps: bool = True
     exclude: tuple[str, ...] = ()
+    output_format: str = "text"
 
 
 def add_check_parser(subparsers: argparse._SubParsersAction, exclude_help: str) -> None:
@@ -122,14 +131,41 @@ def add_check_parser(subparsers: argparse._SubParsersAction, exclude_help: str) 
         help="skip the dependency-declaration rule (deptry), on by default",
     )
     check_parser.add_argument("--exclude", action="append", help=exclude_help)
+    check_parser.add_argument(
+        "--output-format",
+        choices=("text", "json"),
+        default="text",
+        help=(
+            "text (default) streams the same headings and counts as today; "
+            + "json prints exactly 1 JSON array of findings to stdout, once, "
+            + "at the end, with no other stdout output"
+        ),
+    )
 
 
-def run_check(repo: Path, run_deps: bool, excludes: Sequence[str] = ()) -> int:
+def run_check(
+    repo: Path,
+    run_deps: bool,
+    excludes: Sequence[str] = (),
+    output_format: str = "text",
+) -> int:
     """`pymodularity check <repo>`: the import-cycle, privacy-convention and
-    (unless `--no-deps`) dependency-declaration checks, findings printed to
-    stdout, exit 1 on any finding, no views written. `excludes` makes a
-    matching tree invisible to every section; an import from kept code
-    into excluded code then behaves like an import of unresolvable code."""
+    (unless `--no-deps`) dependency-declaration checks. Text mode (default)
+    prints findings to stdout as they're computed, exit 1 on any finding.
+    json mode collects every finding first and prints exactly 1 JSON array
+    at the end; an uncaught exception there is exit 2 with an empty stdout
+    and the traceback on stderr. `excludes` makes a matching tree invisible
+    to every section; an import from kept code into excluded code then
+    behaves like an import of unresolvable code."""
+    if output_format == "json":
+        return _run_check_json(repo, run_deps, excludes)
+    return _run_check_text(repo, run_deps, excludes)
+
+
+def _collect_graph_findings(repo: Path, excludes: Sequence[str]):
+    """Shared by both output modes: the graph, cycle findings and the
+    sorted privacy/name violations they all need. Keeping this in 1 place
+    means a rule added here can't be forgotten in the other mode."""
     graph = build_graph(repo, excludes)
 
     cycle_findings = find_all_cycle_findings(graph.dirs_with_py, graph.edge_names)
@@ -146,6 +182,25 @@ def run_check(repo: Path, run_deps: bool, excludes: Sequence[str] = ()) -> int:
         find_name_violations(graph.edge_names)
         + find_name_violations(graph.attr_name_edges, via_attribute=True),
         key=lambda v: (str(v.importer), str(v.target), v.name),
+    )
+    return graph, cycle_findings, privacy_violations, name_violations
+
+
+def _collect_structure_findings(repo: Path, graph, excludes: Sequence[str]):
+    """The structure-limit findings, same call for both output modes."""
+    return find_structure_findings(
+        repo,
+        graph.py_files,
+        graph.dirs_with_py,
+        graph.defined_names,
+        graph.registered_names,
+        excludes,
+    )
+
+
+def _run_check_text(repo: Path, run_deps: bool, excludes: Sequence[str]) -> int:
+    graph, cycle_findings, privacy_violations, name_violations = _collect_graph_findings(
+        repo, excludes
     )
     distinct_file_cycles = count_file_level_cycles(graph.adj)
     any_finding = print_check_findings(
@@ -164,14 +219,41 @@ def run_check(repo: Path, run_deps: bool, excludes: Sequence[str] = ()) -> int:
             return 2
         deps_finding = print_deps_findings(deps_result)
 
-    structure_findings = find_structure_findings(
-        repo,
-        graph.py_files,
-        graph.dirs_with_py,
-        graph.defined_names,
-        graph.registered_names,
-        excludes,
-    )
+    structure_findings = _collect_structure_findings(repo, graph, excludes)
     structure_finding = print_structure_findings(structure_findings)
 
     return 1 if any_finding or deps_finding or structure_finding else 0
+
+
+def _run_check_json(repo: Path, run_deps: bool, excludes: Sequence[str]) -> int:
+    """json mode: nothing is printed to stdout until every finding is
+    collected, so an uncaught exception anywhere in this function leaves
+    stdout empty, exit 2, traceback on stderr -- the top-level catch in
+    `cli`."""
+    graph, cycle_findings, privacy_violations, name_violations = _collect_graph_findings(
+        repo, excludes
+    )
+
+    records: list[Finding] = []
+    records.extend(cycle_findings_to_records(cycle_findings))
+    records.extend(privacy_violations_to_records(privacy_violations))
+    records.extend(name_violations_to_records(name_violations))
+
+    if run_deps:
+        deps_result = run_dependency_checks(repo, excludes)
+        if isinstance(deps_result, UvMissing):
+            print(
+                "error: `uv` not found on PATH; the dependency-declaration "
+                + "rule needs it (use --no-deps to skip)",
+                file=sys.stderr,
+            )
+            return 2
+        print_skipped_to_stderr(deps_result.skipped)
+        records.extend(dep_findings_to_records(deps_result.findings))
+        records.extend(dep_failures_to_records(deps_result.failed))
+
+    structure_findings = _collect_structure_findings(repo, graph, excludes)
+    records.extend(structure_findings_to_records(structure_findings))
+
+    print_findings_json(records)
+    return 1 if records else 0

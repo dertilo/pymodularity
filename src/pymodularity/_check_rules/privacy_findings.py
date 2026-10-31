@@ -6,8 +6,11 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from pymodularity._check_rules.cycle_detection import CycleFinding
+from pymodularity._check_rules.finding_records import Finding, make_finding
 from pymodularity._import_parse.import_graph import EdgeNames
 from pymodularity._import_parse.module_names import is_private_name, module_comp
+
+_PRIVATE_ITEMS_URL = "docs/rules.md#private-items"
 
 
 def _owning_package_root(rel: Path, package_roots: Sequence[Path]) -> Path:
@@ -177,3 +180,30 @@ def print_check_findings(
     print()
 
     return any_finding
+
+
+def privacy_violations_to_records(
+    violations: Sequence[_PrivacyViolation],
+) -> tuple[Finding, ...]:
+    out: list[Finding] = []
+    for v in violations:
+        suffix = " (via attribute access)" if v.via_attribute else ""
+        message = f"{v.target}: allowed only inside {v.owner}{suffix}"
+        out.append(
+            make_finding("private-module-import", v.importer, message, _PRIVATE_ITEMS_URL)
+        )
+    return tuple(out)
+
+
+def name_violations_to_records(
+    violations: Sequence[_NameViolation],
+) -> tuple[Finding, ...]:
+    out: list[Finding] = []
+    for nv in violations:
+        scope = "directory" if nv.owner_is_dir else "file"
+        suffix = " (via attribute access)" if nv.via_attribute else ""
+        message = f"{nv.target}: name {nv.name} private to {scope} {nv.owner}{suffix}"
+        out.append(
+            make_finding("private-name-import", nv.importer, message, _PRIVATE_ITEMS_URL)
+        )
+    return tuple(out)

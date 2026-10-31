@@ -12,7 +12,11 @@ from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 from pathlib import Path
 
+from pymodularity._check_rules.finding_records import Finding, make_finding
 from pymodularity._import_parse.package_roots import find_package_roots
+
+_NAMES_URL = "docs/rules.md#names-carry-a-scope"
+_SYMPTOM_URL = "docs/rules.md#a-finding-is-a-symptom-not-a-target"
 
 _MAX_FILE_LINES = 500
 _MAX_DIR_ENTRIES = 10
@@ -281,3 +285,34 @@ def print_structure_findings(findings: _StructureFindings) -> bool:
         )
     print()
     return total > 0
+
+
+def structure_findings_to_records(findings: _StructureFindings) -> tuple[Finding, ...]:
+    out: list[Finding] = []
+    for v in findings.too_long:
+        message = f"{v.lines} lines (limit {_MAX_FILE_LINES})"
+        out.append(make_finding("file-too-long", v.file, message, _SYMPTOM_URL))
+    for v in findings.too_many_entries:
+        message = f"{v.entries} entries (limit {_MAX_DIR_ENTRIES})"
+        out.append(
+            make_finding("directory-too-many-entries", v.directory, message, _SYMPTOM_URL)
+        )
+    for v in findings.package_too_big:
+        message = f"{v.files} files (limit {_MAX_PACKAGE_FILES})"
+        out.append(
+            make_finding("package-too-many-files", v.package, message, _SYMPTOM_URL)
+        )
+    for v in findings.too_wide:
+        message = f"{v.names} public names (limit {_MAX_PUBLIC_NAMES})"
+        out.append(
+            make_finding("file-too-many-public-names", v.file, message, _SYMPTOM_URL)
+        )
+    for v in findings.file_name_too_few_words:
+        message = f"{v.words} word(s) in the name (minimum {_MIN_NAME_WORDS})"
+        out.append(make_finding("file-name-too-few-words", v.file, message, _NAMES_URL))
+    for v in findings.dir_name_too_few_words:
+        message = f"{v.words} word(s) in the name (minimum {_MIN_NAME_WORDS})"
+        out.append(
+            make_finding("directory-name-too-few-words", v.directory, message, _NAMES_URL)
+        )
+    return tuple(out)

@@ -92,6 +92,36 @@ A limit is a ceiling, not a target: below it, a smaller interface is still bette
   - from this repo's own rollout: `cli.py` held three subcommands, so the answer was a split into `check_command.py`, `graph_command.py`, `metrics_command.py` and the dispatcher in `__main__.py`. The split then tripped the entries-per-directory limit, and the rule files moved into `_check_rules/`, a second action the name question caused. `_parse/` already held one thing, parsing imports, so `_import_parse/` was a pure rename.
   - why the rule fires on the name and not on a line count or an import metric: a line count fires once the file has grown, an import metric once the file has importers. The name question fires at 0 lines, when the split is free.
 
+## JSON output
+
+`check --output-format json` prints exactly one JSON array to stdout, after every rule has run.
+Text output stays the default.
+
+- keys per finding: `rule`, `severity`, `path`, `line`, `col`, `message`, `url`.
+- `severity`: always `"error"`, because every finding exits 1.
+- `path`: POSIX, relative to `<repo>`. 4 rules point at a directory, so the key is not `file`.
+- `line`, `col`: deptry's position for a dependency finding, 0 for every other rule.
+  - reason: the import graph stores no line numbers.
+- `url`: the rule's section in this file, or the README's rule list for cycles.
+  - reason: the "a finding is a symptom" guidance of the text output reaches a JSON reader only through this link.
+- skipped packages: one line each on stderr, never in the array.
+
+Rule names:
+
+- `import-cycle`: one finding per directory view, the message names one example loop.
+- `private-module-import`, `private-name-import`.
+- deptry: `missing-dependency` (DEP001), `unused-dependency` (DEP002), `transitive-dependency` (DEP003), `misplaced-dev-dependency` (DEP004), `standard-library-dependency` (DEP005). The DEP code starts the message.
+- `dependency-check-failed`: deptry crashed or its output did not parse, for one package. The other packages' findings stay in the array.
+- `file-too-long`, `directory-too-many-entries`, `package-too-many-files`, `file-too-many-public-names`.
+- `file-name-too-few-words`, `directory-name-too-few-words`.
+
+Exit codes:
+
+- 0: empty array.
+- 1: at least one finding.
+- 2: `uv` missing or an uncaught exception. stdout stays empty, the error goes to stderr.
+  - reason: a lint runner must never read a crash as "0 findings".
+
 ## Ruff rules for functions and classes
 
 The structure limits stop at file level.

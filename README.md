@@ -59,9 +59,10 @@ Effect: an excluded tree is invisible to every rule and report, except deptry's 
 An import from kept code into it behaves like an import of code `pymodularity` can't resolve.
 Details: [docs/rules.md](docs/rules.md#excluding-code).
 
-- `pymodularity check <repo> [--no-deps]`: runs the 5 rules above and prints the findings.
+- `pymodularity check <repo> [--no-deps] [--output-format json]`: runs the 5 rules above and prints the findings.
   - exit code: 1 on any finding.
   - `--no-deps`: skips the dependency rule.
+  - `--output-format json`: one flat JSON array of findings, for lint runners and agents. Keys, rule names and exit codes: [docs/rules.md](docs/rules.md#json-output).
 - `pymodularity graph <repo> --out DIR [--html]`: writes one mermaid view per directory under `DIR`.
   - `index.md`: written for every view.
   - `--html`: adds a clickable `index.html` per view. The browser needs network access to load mermaid from a CDN.

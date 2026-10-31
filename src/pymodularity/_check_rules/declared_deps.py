@@ -15,6 +15,7 @@ import json
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import tomllib
 from collections.abc import Sequence
@@ -22,9 +23,20 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import cast
 
+from pymodularity._check_rules.finding_records import Finding, make_finding
 from pymodularity._import_parse.package_roots import find_package_roots, should_skip_dir
 
 _DEPTRY_VERSION = "0.25.1"
+
+_DEPS_URL = "docs/rules.md#dependency-declarations"
+
+_DEP_CODE_RULES = {
+    "DEP001": "missing-dependency",
+    "DEP002": "unused-dependency",
+    "DEP003": "transitive-dependency",
+    "DEP004": "misplaced-dev-dependency",
+    "DEP005": "standard-library-dependency",
+}
 
 _NO_LOCKFILE_MARKER = "Unable to find lockfile"
 
@@ -316,3 +328,35 @@ def print_deps_findings(result: _DepsResult) -> bool:
     print()
 
     return any_finding
+
+
+def print_skipped_to_stderr(skipped: Sequence[_Skipped]) -> None:
+    """json mode's home for the "skipped package" lines: never a finding,
+    so never in the JSON array, but still worth surfacing somewhere."""
+    for s in skipped:
+        print(f"- {s.pkg}: skipped ({s.reason})", file=sys.stderr)
+
+
+def dep_findings_to_records(findings: Sequence[_DepFinding]) -> tuple[Finding, ...]:
+    out: list[Finding] = []
+    for f in findings:
+        rule = _DEP_CODE_RULES.get(f.code, "dependency-check-failed")
+        line = f.position.line if isinstance(f.position, _KnownPosition) else 0
+        col = f.position.column if isinstance(f.position, _KnownPosition) else 0
+        path = f.pkg / f.file if f.file not in {"?", ""} else f.pkg
+        message = f"{f.code} {f.message}"
+        out.append(make_finding(rule, path, message, _DEPS_URL, line=line, col=col))
+    return tuple(out)
+
+
+def dep_failures_to_records(failed: Sequence[_Failed]) -> tuple[Finding, ...]:
+    out: list[Finding] = []
+    for failure in failed:
+        message = (
+            f"{failure.pkg}: deptry failed or its output did not parse: "
+            + failure.stderr_tail
+        )
+        out.append(
+            make_finding("dependency-check-failed", failure.pkg, message, _DEPS_URL)
+        )
+    return tuple(out)
