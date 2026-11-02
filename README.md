@@ -35,6 +35,9 @@ Each finding names the importing file, the target and the owner.
   - private name from a package: the owner is the package directory.
   - private name from a regular file: the owner is that file alone, so even a sibling file is a finding.
   - attribute access such as `mod._x` counts like an import.
+
+  ![Who may import _pricing.py and the name _rate: owner, descendant, sibling, parent](https://raw.githubusercontent.com/dertilo/pymodularity/main/docs/images/private_imports_rust_rule.svg)
+
 - **Declared dependencies match the imports:** [deptry](https://github.com/fpgmaas/deptry) reports unused, missing and transitive dependencies per package root.
   - requirement: `uv` on PATH. Without it, `check` exits 2.
   - `--no-deps` skips this rule.
