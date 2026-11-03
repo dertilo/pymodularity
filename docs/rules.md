@@ -65,9 +65,8 @@ A limit is a ceiling, not a target: below it, a smaller interface is still bette
 - a finding names where to look, never what to do.
   - reason: a limit counts lines, entries or names. The cause sits in the dependencies between the code behind that count.
 - anti-pattern: moving, splitting or regrouping files until the count passes.
-  - example: claudia's `claudia_core/services/` held 21 entries. 3 layouts moved files into subdirectories: 4 files into `segment_lifecycle/`, a variant also moving `agents.py` and `TurnHandle`, and a whole-`services/` layout of 4 to 6 folders.
-  - outcome: each layout closed a directory cycle or produced bucket names such as `segment_decisions` and `turn_support`. Some files sat where they did only to dodge a cycle.
-  - cause: about 16 of those files import each other in both directions. Inside such a block a move only shifts where the cycle closes, so no layout meets the limit.
+  - reason: when files import each other in both directions, a move only shifts where the cycle closes, so no layout meets the limit.
+  - symptom: regrouping by count produces bucket names, folders named after no single concern, and files that sit where they do only to dodge a cycle.
 - response: read the imports at symbol level, in a few files at a time.
   - per edge: which function, class or variable causes it, and why the importer needs that name.
   - then remove or invert one dependency, and rerun `check`.
